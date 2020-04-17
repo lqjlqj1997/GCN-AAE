@@ -1,6 +1,6 @@
 import sys
-sys.path.extend(['../'])
-import os
+# sys.path.extend(['../'])
+# import os
 
 import torch
 import pickle

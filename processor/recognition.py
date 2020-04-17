@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # pylint: disable=W0201
 import sys
+# sys.path.extend(['../'])
+
 import argparse
 import yaml
 import numpy as np
@@ -31,6 +33,17 @@ def weights_init(m):
     elif classname.find('BatchNorm') != -1:
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
+        
+def loss_function(recon_x, x, mu, logvar):
+    BCE = F.binary_cross_entropy(recon_x, x.view(-1, 784), reduction='sum')
+
+    # see Appendix B from VAE paper:
+    # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+    # https://arxiv.org/abs/1312.6114
+    # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+    return BCE + KLD
 
 class REC_Processor(Processor):
     """
@@ -88,9 +101,9 @@ class REC_Processor(Processor):
             label = label.long().to(self.dev)
 
             # forward
-            output = self.model(data)
-            loss = self.loss(output, label)
-
+            recon_x, mean, lsig, z = self.model(data)
+            loss = loss_function(recon_x, x, mean, lsig)
+            
             # backward
             self.optimizer.zero_grad()
             loss.backward()
@@ -123,12 +136,12 @@ class REC_Processor(Processor):
 
             # inference
             with torch.no_grad():
-                output = self.model(data)
-            result_frag.append(output.data.cpu().numpy())
+                recon_data, mean, lsig, z = self.model(data)
+            result_frag.append(recon_x.data.cpu().numpy())
 
             # get loss
             if evaluation:
-                loss = self.loss(output, label)
+                loss = loss_function(recon_data,data,mean,lsig)
                 loss_value.append(loss.item())
                 label_frag.append(label.data.cpu().numpy())
 
@@ -164,3 +177,5 @@ class REC_Processor(Processor):
         # endregion yapf: enable
 
         return parser
+
+

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # pylint: disable=W0201
 import sys
+
 import argparse
 import yaml
 import numpy as np
@@ -15,8 +16,9 @@ import torchlight
 from torchlight import str2bool
 from torchlight import DictAction
 from torchlight import import_class
-
-from .io import IO
+import os
+print(os.getcwd())
+from .base import IO
 
 class Processor(IO):
     """

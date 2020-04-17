@@ -20,6 +20,7 @@ class CVAE(nn.Module):
 
         self.T = T
         self.V = V
+        
         self.n_z = n_z
         self.encoder = Encoder(in_channels, n_z, graph_args, edge_importance_weighting)
         self.decoder = Decoder(in_channels, n_z,self.T,self.V, graph_args, edge_importance_weighting)
@@ -27,14 +28,14 @@ class CVAE(nn.Module):
     def forward(self, x ):
         
         self.batch_size = x.size(0)
-
+        self.M = x.size(4)
         mean, lsig = self.encoder(x)
         
         z = self.reparameter(mean,lsig)
         
         
 
-        recon_x = self.decoder(z, self.T, self.V)
+        recon_x = self.decoder(z,self.M)
 
         return recon_x, mean, lsig, z
     
@@ -47,16 +48,11 @@ class CVAE(nn.Module):
     #     z = eps * sig + mean
     #     return z
     
-    def reparameter(self, mu, logvar):
-        std = torch.exp(logvar / 2)
-        
-        sampled_z = torch.tensor(np.random.normal(0, 1, (self.batch_size, self.n_z))).float()
-        
-        if(std.is_cuda):
-            sampled_z.cuda()
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
 
-        z = sampled_z * std + mu
-        return z
+        return mu + eps*std
 
     def inference(self, n=1, ldec=None):
 
@@ -64,9 +60,9 @@ class CVAE(nn.Module):
         z = torch.tensor(np.random.normal(0, 1, (batch_size, self.n_z)))
         
         if(self.is_cuda):
-            z.cuda()
+            z = z.cuda()
         
-        recon_x = self.decoder(z, ldec)
+        recon_x = self.decoder(z)
 
         return recon_x
 
@@ -139,7 +135,6 @@ class Encoder(nn.Module):
 
         x = x.permute(0, 4, 3, 1, 2).contiguous()
         x = x.view(N * M, V * C, T)
-        print(x.shape)
         x = self.data_bn(x)
         
         x = x.view(N, M, V, C, T)
@@ -152,6 +147,7 @@ class Encoder(nn.Module):
 
         # global pooling
         x = F.avg_pool2d(x, x.size()[2:])
+
         x = x.view(N, M, -1, 1, 1).mean(dim=1)
 
         # prediction
@@ -197,6 +193,7 @@ class Decoder(nn.Module):
         spatial_kernel_size = A.size(0)
         kernel_size = (temporal_kernel_size, spatial_kernel_size)
 
+
         self.fcn = nn.ConvTranspose2d(n_z, 32, kernel_size=(T,V))
 
         self.decoder = nn.ModuleList((
@@ -223,30 +220,37 @@ class Decoder(nn.Module):
 
         self.data_bn = nn.BatchNorm1d(in_channels * A.size(1))
         self.out = nn.Sigmoid()
-
-    def forward(self, z, T, V):
+        
+    def forward(self, z, M):
 
         N = z.size()[0]
-        
-        # reshape
-        z = z.view(N, z.size()[1], 1, 1)
 
+        z = z.repeat([M,1])
+        # reshape
+        z = z.view(z.size(0), z.size(1), 1, 1)
+        
+        # z = z.repeat([1, 1, T, V])
         # forward
         z = self.fcn(z)
 
         # forward
         for gcn, importance in zip(self.decoder, self.edge_importance):
             z, _ = gcn(z, self.A * importance)
-        
-        z = torch.unsqueeze(z, 4)
+
+        # z = torch.unsqueeze(z, 4)
 
         # data normalization
-        N, C, T, V, M = z.size()
         
-        z = z.permute(0, 4, 3, 1, 2).contiguous()
+        _, C, T, V,  = z.size()
+        
+        z = z.view(N,M,C,T,V).contiguous()
+        
+        z = z.permute(0, 1, 4, 2, 3).contiguous()
+
         z = z.view(N * M, V * C, T)
         z = self.data_bn(z)
         z = z.view(N, M, V, C, T)
+        
         z = z.permute(0, 3, 4, 2, 1).contiguous()
         # z = self.out(z)
 
@@ -255,15 +259,23 @@ class Decoder(nn.Module):
 
 if __name__ == '__main__':
     
-    input=torch.randn(100,3,300,25,2)
-    N, C, T, V, M = input.size()
+    x=torch.randn(36,3,300,25,2).cuda()
     
+    N, C, T, V, M = x.size()
     graph_args = {"layout":'ntu-rgb+d','strategy': "uniform", 'max_hop': 1, 'dilation': 1}
-    m = CVAE(in_channels=3, T=T, V=V, n_z=32, graph_args= graph_args,edge_importance_weighting=True)
-    print(m.encoder.A.shape)
-    recon_x, mean, lsig, z = m (input)
+    m = CVAE(in_channels=3, T=T, V=V, n_z=32, graph_args= graph_args,edge_importance_weighting=True).cuda()
+    optimizer = torch.optim.SGD(m.parameters(), lr=0.01, momentum=0.9)
+    lossF = nn.MSELoss()
     
-    print(recon_x,shape)
-    print(mean,shape)
-    print(lsig,shape)
-    print(z,shape)
+    for i in range(10000):
+        recon_x, mean, lsig, z = m (x)
+        loss = lossF(x,recon_x) 
+        optimizer.step()
+        if (i % 100)==0:
+            print(i," : ", loss.item())
+
+    print(recon_x.shape)
+    print(mean.shape)
+    print(lsig.shape)
+    print(z.shape)
+    print(lossF(x,recon_x))
