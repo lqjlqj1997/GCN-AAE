@@ -11,9 +11,8 @@ def import_class(name):
 
 if __name__ == "__main__":
     
-    config = os.path.join("C:\Personal\Sourecode\school\year3\FYP\GCN-AAE\config\\ntu120-xsub", 'train.yaml')
-    # Feeder = import_class("feeders.feeder.Feeder")
-    args = ['--config', config]
+
+    args = ['--config', "./config/ntu120-xsub/train.yaml"]
     
     processor = REC_Processor(args)
     processor.start()

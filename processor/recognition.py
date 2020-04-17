@@ -107,6 +107,7 @@ class REC_Processor(Processor):
             # backward
             self.optimizer.zero_grad()
             loss.backward()
+            model.decoder.zero_grad()
             self.optimizer.step()
 
             # statistics

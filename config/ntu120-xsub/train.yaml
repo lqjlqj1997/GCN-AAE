@@ -1,4 +1,4 @@
-work_dir: ./work_dir/recognition/ntu-xsub/ST_GCN
+work_dir: ./work_dir/recognition/ntu-xsub/ST_VAE
 
 # feeder
 feeder: feeders.feeder.Feeder

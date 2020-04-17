@@ -22,7 +22,7 @@ from .base import IO
 
 class Processor(IO):
     """
-        Base Processor
+        Base ProcessorF
     """
 
     def __init__(self, argv=None):
