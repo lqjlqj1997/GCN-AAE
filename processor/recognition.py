@@ -19,6 +19,7 @@ from torchlight import DictAction
 from torchlight import import_class
 
 from .processor import Processor
+import torch.nn.functional as F
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -33,16 +34,64 @@ def weights_init(m):
     elif classname.find('BatchNorm') != -1:
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
-        
-def loss_function(recon_x, x, mu, logvar):
-    BCE = F.binary_cross_entropy(recon_x, x.view(-1, 784), reduction='sum')
 
+def between_frame_loss(gait1, gait2, thres=0.01):
+    N,C,T,V,M = gait1.size()
+
+    g1 = gait1.permute(0, 2, 3, 1, 4).contiguous().view(gait1.shape[0], gait1.shape[2], gait1.shape[1]*gait1.shape[3])
+    g2 = gait2.permute(0, 2, 3, 1, 4).contiguous().view(gait2.shape[0], gait2.shape[2], gait2.shape[1]*gait2.shape[3])
+    
+    num_batches = g1.shape[0]
+    num_tsteps = g2.shape[1]
+    
+    mid_tstep = np.int(num_tsteps / 2) - 1
+
+    loss = nn.functional.mse_loss(g1, g2)
+    #motion_loss
+    for bidx in range(num_batches):
+
+        for tidx in range(num_tsteps):
+            
+            loss += nn.functional.mse_loss(g1[bidx, tidx, :]-g1[bidx, 0, :]         , g2[bidx, tidx, :]-g2[bidx, 0, :])
+            loss += nn.functional.mse_loss(g1[bidx, tidx, :]-g1[bidx, mid_tstep, :] , g2[bidx, tidx, :]-g2[bidx, mid_tstep, :])
+            loss += nn.functional.mse_loss(g1[bidx, tidx, :]-g1[bidx, -1, :]        , g2[bidx, tidx, :]-g2[bidx, -1, :])
+            
+            for vidx in range(g1.shape[2]):
+                if tidx > 0:
+                    loss += nn.functional.mse_loss(g1[bidx, tidx, vidx] - g1[bidx, tidx-1, vidx],
+                                                   g2[bidx, tidx, vidx] - g2[bidx, tidx-1, vidx])
+                if tidx > 1:
+                        loss += nn.functional.mse_loss(g1[bidx, tidx, vidx] -
+                                                       2*g1[bidx, tidx-1, vidx] + g1[bidx, tidx-2, vidx],
+                                                       g2[bidx, tidx, vidx] -
+                                                       2 * g2[bidx, tidx - 1, vidx] + g2[bidx, tidx - 2, vidx])
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 5], g2[bidx, tidx-1, 5]+thres/2)
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 6], g2[bidx, tidx-1, 6]+thres)
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 7], g2[bidx, tidx-1, 7]+thres/3)
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 8], g2[bidx, tidx-1, 8]+thres/2)
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 9], g2[bidx, tidx-1, 9]+thres)
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 10], g2[bidx, tidx-1, 10]+thres/3)
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 11], g2[bidx, tidx-1, 11]+thres/2)
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 12], g2[bidx, tidx-1, 12]+thres)
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 13], g2[bidx, tidx-1, 13]+thres/3)
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 14], g2[bidx, tidx-1, 14]+thres/2)
+                # loss += nn.functional.l1_loss(g2[bidx, tidx, 15], g2[bidx, tidx-1, 15]+thres)
+    return loss        
+
+def loss_function(recon_x, x, mu, logvar):
+    n = recon_x.size(0)
+    # print(recon_x.shape)
+    # BCE = F.binary_cross_entropy(recon_x.view(n,-1), x.view(n,-1), reduction='sum')
+    BCE = nn.functional.mse_loss(recon_x, x)
+    # print("BCE : ", BCE)
     # see Appendix B from VAE paper:
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
     # https://arxiv.org/abs/1312.6114
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-
+    # print(torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),1).mean())
+    # print(mu.pow(2).shape)
+    
+    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),1).mean()
     return BCE + KLD
 
 class REC_Processor(Processor):
@@ -93,7 +142,7 @@ class REC_Processor(Processor):
         self.adjust_lr()
         loader = self.data_loader['train']
         loss_value = []
-
+        # print(len(loader.dataset))
         for data, label in loader:
 
             # get data
@@ -101,13 +150,13 @@ class REC_Processor(Processor):
             label = label.long().to(self.dev)
 
             # forward
-            recon_x, mean, lsig, z = self.model(data)
-            loss = loss_function(recon_x, x, mean, lsig)
+            recon_data, mean, lsig, z = self.model(data)
+            loss = loss_function(recon_data, data, mean, lsig)
             
             # backward
             self.optimizer.zero_grad()
             loss.backward()
-            model.decoder.zero_grad()
+            self.model.decoder.zero_grad()
             self.optimizer.step()
 
             # statistics
@@ -138,7 +187,7 @@ class REC_Processor(Processor):
             # inference
             with torch.no_grad():
                 recon_data, mean, lsig, z = self.model(data)
-            result_frag.append(recon_x.data.cpu().numpy())
+            result_frag.append(recon_data.data.cpu().numpy())
 
             # get loss
             if evaluation:
