@@ -87,7 +87,7 @@ class Feeder(Dataset):
         if self.random_move:
             data_numpy = tools.random_move(data_numpy)
 
-        return data_numpy, label, index
+        return data_numpy, label
 
 
 def test(data_path, label_path, vid=None, graph=None, is_3d=False):

@@ -150,7 +150,7 @@ class IO():
             k: '{:02d}%'.format(int(round(v * 100 / sum(self.split_timer.values()))))
             for k, v in self.split_timer.items()
         }
-        self.print_log('Time consumption:')
+        self.print_log('Time consumption:{}'.format(int(time.time() - self.cur_time)))
         for k in proportion:
             self.print_log(
                 '\t[{}][{}]: {:.4f}'.format(k, proportion[k],self.split_timer[k])

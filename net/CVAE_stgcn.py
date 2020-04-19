@@ -48,7 +48,7 @@ class CVAE(nn.Module):
     #     z = eps * sig + mean
     #     return z
     
-    def reparameterize(self, mu, logvar):
+    def reparameter(self, mu, logvar):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
 

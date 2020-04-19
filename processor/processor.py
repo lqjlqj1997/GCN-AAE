@@ -5,6 +5,7 @@ import sys
 import argparse
 import yaml
 import numpy as np
+import datetime
 
 # torch
 import torch
@@ -118,7 +119,12 @@ class Processor(IO):
                 # save model
                 if ((epoch + 1) % self.arg.save_interval == 0) or (
                         epoch + 1 == self.arg.num_epoch):
-                    filename = 'epoch{}_model.pt'.format(epoch + 1)
+                    date_time = datetime.datetime.now().strftime("%Y_%m_%d/")
+                    filename = date_time + 'epoch{}_model.pt'.format(epoch + 1)
+                    
+                    if not os.path.exists(self.io.work_dir + "/" +  date_time):
+                        os.makedirs(self.io.work_dir + "/" + date_time)
+                    
                     self.io.save_model(self.model, filename)
 
                 # evaluation
