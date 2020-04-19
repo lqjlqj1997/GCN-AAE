@@ -16,7 +16,7 @@ import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 from torch.optim.lr_scheduler import MultiStepLR
 # import apex
 
