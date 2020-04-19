@@ -14,5 +14,5 @@ if __name__ == "__main__":
 
     args = ['--config', "./config/ntu120-xsub/train.yaml"]
     
-    processor = REC_Processor(args)
+    processor = REC_Processor(sys.argv[1:])
     processor.start()
