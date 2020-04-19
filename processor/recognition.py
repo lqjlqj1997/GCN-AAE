@@ -187,23 +187,23 @@ class REC_Processor(Processor):
             # inference
             with torch.no_grad():
                 recon_data, mean, lsig, z = self.model(data)
-            result_frag.append(recon_data.data.cpu().numpy())
+            # result_frag.append(recon_data.data.cpu().numpy())
 
             # get loss
             if evaluation:
                 loss = loss_function(recon_data,data,mean,lsig)
                 loss_value.append(loss.item())
-                label_frag.append(label.data.cpu().numpy())
+                # label_frag.append(label.data.cpu().numpy())
 
-        self.result = np.concatenate(result_frag)
+        # self.result = np.concatenate(result_frag)
         if evaluation:
-            self.label = np.concatenate(label_frag)
+            # self.label = np.concatenate(label_frag)
             self.epoch_info['mean_loss']= np.mean(loss_value)
             self.show_epoch_info()
 
             # show top-k accuracy
-            for k in self.arg.show_topk:
-                self.show_topk(k)
+            # for k in self.arg.show_topk:
+            #     self.show_topk(k)
 
     @staticmethod
     def get_parser(add_help=False):

@@ -118,7 +118,8 @@ class Processor(IO):
                 # save model
                 if ((epoch + 1) % self.arg.save_interval == 0) or (
                         epoch + 1 == self.arg.num_epoch):
-                    filename = 'epoch{}_model.pt'.format(epoch + 1)
+                    date_time = datetime.datetime.now().strftime("%Y_%m_%d/")
+                    filename = date_time + 'epoch{}_model.pt'.format(epoch + 1)
                     self.io.save_model(self.model, filename)
 
                 # evaluation
