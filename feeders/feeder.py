@@ -107,12 +107,14 @@ def test(data_path, label_path, vid=None, graph=None, is_3d=False):
         shuffle=False,
         num_workers=2)
     print(loader.dataset.sample_name[1])
+
     if vid is not None:
         sample_name = loader.dataset.sample_name
         sample_id = [name.split('.')[0] for name in sample_name]
         print(sample_id[0])
         index = sample_id.index(vid)
         data, label, index = loader.dataset[index]
+
         data = data.reshape((1,) + data.shape)
 
         # for batch_idx, (data, label) in enumerate(loader):
@@ -171,7 +173,48 @@ def test(data_path, label_path, vid=None, graph=None, is_3d=False):
                 fig.canvas.draw()
                 # plt.savefig('/home/lshi/Desktop/skeleton_sequence/' + str(t) + '.jpg')
                 plt.pause(0.01)
+def display_skeleton(data):
+    from mpl_toolkits.mplot3d import Axes3D
+    data = data.reshape((1,) + data.shape)
 
+    # for batch_idx, (data, label) in enumerate(loader):
+    N, C, T, V, M = data.shape
+
+    plt.ion()
+    fig = plt.figure()
+    
+    ax = fig.add_subplot(111, projection='3d')
+   
+    p_type = ['b-', 'g-', 'r-', 'c-', 'm-', 'y-', 'k-', 'k-', 'k-', 'k-']
+    edge = [(1, 2)  ,(2, 21)    ,(3, 21)   ,(4, 3)    ,(5, 21)   ,(6, 5)    , 
+            (7, 6)  ,(8, 7)     ,(9, 21)   ,(10, 9)   ,(11, 10)  ,(12, 11)  ,
+            (13, 1) ,(14, 13)   ,(15, 14)  ,(16, 15)  ,(17, 1)   ,(18, 17)  ,
+            (19, 18),(20, 19)   ,(22, 23)  ,(23, 8)   ,(24, 25)  ,(25, 12)  ]
+    pose = []
+
+    for m in range(M):
+        a = []
+        for i in range(len(edge)):
+            a.append(ax.plot(np.zeros(3), np.zeros(3), p_type[m])[0])
+            
+        pose.append(a)
+
+    ax.axis([-1, 1, -1, 1])
+    ax.set_zlim3d(-1, 1)
+    
+    for t in range(T):
+        for m in range(M):
+            for i, (v1, v2) in enumerate(edge):
+                x1 = data[0, :2, t, v1, m]
+                x2 = data[0, :2, t, v2, m]
+                if (x1.sum() != 0 and x2.sum() != 0) or v1 == 1 or v2 == 1:
+                    pose[m][i].set_xdata(data[0, 0, t, [v1, v2], m])
+                    pose[m][i].set_ydata(data[0, 1, t, [v1, v2], m])
+                    if is_3d:
+                        pose[m][i].set_3d_properties(data[0, 2, t, [v1, v2], m])
+        fig.canvas.draw()
+        # plt.savefig('/home/lshi/Desktop/skeleton_sequence/' + str(t) + '.jpg')
+        plt.pause(0.01)
 
 if __name__ == '__main__':
     import os

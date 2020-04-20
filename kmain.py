@@ -1,6 +1,6 @@
 import sys
 import os
-from processor.recognition import REC_Processor
+from processor.Kmeans import Cluster
 
 
 if __name__ == "__main__":
@@ -8,5 +8,5 @@ if __name__ == "__main__":
 
     args = ['--config', "./config/ntu120-xsub/train.yaml"]
     
-    processor = REC_Processor(sys.argv[1:])
+    processor = Cluster(sys.argv[1:])
     processor.start()

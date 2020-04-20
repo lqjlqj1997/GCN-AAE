@@ -18,10 +18,15 @@ from torchlight import str2bool
 from torchlight import DictAction
 from torchlight import import_class
 
+from sklearn.cluster import KMeans
+import numpy as np
+from collections import Counter
+
 from .processor import Processor
 import torch.nn.functional as F
 
 def weights_init(m):
+    
     classname = m.__class__.__name__
     if classname.find('Conv1d') != -1:
         m.weight.data.normal_(0.0, 0.02)
@@ -34,10 +39,75 @@ def weights_init(m):
     elif classname.find('BatchNorm') != -1:
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
-     
 
+def display_skeleton(data,sample_name):
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    import os
+    data = data.reshape((1,) + data.shape)
 
     
+    print("===========================================")
+
+    # for batch_idx, (data, label) in enumerate(loader):
+    N, C, T, V, M = data.shape
+
+    plt.ion()
+    fig = plt.figure()
+    
+    
+    ax = fig.add_subplot(111, projection='3d')
+   
+    p_type = ['b-', 'g-', 'r-', 'c-', 'm-', 'y-', 'k-', 'k-', 'k-', 'k-']
+    edge = [(1, 2)  ,(2, 21)    ,(3, 21)   ,(4, 3)    ,(5, 21)   ,(6, 5)    , 
+            (7, 6)  ,(8, 7)     ,(9, 21)   ,(10, 9)   ,(11, 10)  ,(12, 11)  ,
+            (13, 1) ,(14, 13)   ,(15, 14)  ,(16, 15)  ,(17, 1)   ,(18, 17)  ,
+            (19, 18),(20, 19)   ,(22, 23)  ,(23, 8)   ,(24, 25)  ,(25, 12)  ]
+    edge = [(i-1,j-1) for (i,j) in edge]
+    pose = []
+
+    for m in range(M):
+        a = []
+        for i in range(len(edge)):
+            a.append(ax.plot(np.zeros(3), np.zeros(3), p_type[m])[0])
+            
+        pose.append(a)
+
+    ax.axis([-1, 1, -1, 1])
+    ax.set_zlim3d(-1, 1)
+    if not os.path.exists('/content/image/'+str(sample_name)+"/"):
+        os.makedirs('/content/image/'+str(sample_name)+"/")
+    for t in range(T):
+        for m in range(M):
+            for i, (v1, v2) in enumerate(edge):
+                x1 = data[0, :2, t, v1, m]
+                x2 = data[0, :2, t, v2, m]
+                if (x1.sum() != 0 and x2.sum() != 0) or v1 == 1 or v2 == 1:
+                    pose[m][i].set_xdata(data[0, 0, t, [v1, v2], m])
+                    pose[m][i].set_ydata(data[0, 1, t, [v1, v2], m])
+                    pose[m][i].set_3d_properties([data[0, 2, t, v1, m],data[0, 2, t, v2, m]])
+                        
+        fig.canvas.draw()
+        
+        
+        plt.savefig('/content/image/'+str(sample_name)+"/" + str(t) + '.jpg')
+        plt.pause(0.01)
+
+def KM_classifier(data,label,k): 
+    
+    kmeans = KMeans(n_clusters=k, random_state=0, verbose = 0,max_iter= 10000).fit(data)
+    pred = kmeans.labels_
+
+    correct = 0
+    for i in range(k):
+        temp = label[pred==i]
+        value, count = Counter(temp).most_common()[0]
+        print("{} -> {} | acc = {}".format(i,value,count/len(temp)))
+        correct += count
+    print("Total_match : {}".format(correct))
+    print("Avg accuracy : {}".format(correct/len(label)))
+
+    return correct/len(label)
 
 def loss_function(recon_x, x, mu, logvar):
     n = recon_x.size(0)
@@ -55,7 +125,7 @@ def loss_function(recon_x, x, mu, logvar):
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),1).mean()
     return BCE + KLD
 
-class REC_Processor(Processor):
+class Cluster(Processor):
     """
         Processor for Skeleton-based Action Recgnition
     """
@@ -98,69 +168,20 @@ class REC_Processor(Processor):
         accuracy = sum(hit_top_k) * 1.0 / len(hit_top_k)
         self.io.print_log('\tTop{}: {:.2f}%'.format(k, 100 * accuracy))
 
-    def train(self):
-        self.model.train()
-        self.adjust_lr()
-        loader = self.data_loader['train']
-        loss_value = []
-        pred_loss_value = []
-
-        prediciton_loss = nn.NLLLoss()
-
-        for data, label in loader:
-
-            # get data
-            data = data.float().to(self.dev)
-            label = label.long().to(self.dev)
-
-            # forward
-            recon_data, mean, lsig, z = self.model(data)
-            loss = loss_function(recon_data, data, mean, lsig)
-            
-            # backward
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.model.decoder.zero_grad()
-            self.optimizer.step()
-
-            #classifier
-            prediction = self.model.fc(mean)
-            pred_loss = prediciton_loss(prediction,label)
-
-            self.optimizer.zero_grad()
-            pred_loss.backward()
-            self.model.decoder.zero_grad()
-            self.optimizer.step()
-
-
-            # statistics
-            self.iter_info['loss'] = loss.data.item()
-            self.iter_info['Pred_loss'] = pred_loss.data.item()
-            self.iter_info['lr'] = '{:.6f}'.format(self.lr)
-            
-            loss_value.append(self.iter_info['loss'])
-
-            pred_loss_value.append(self.iter_info['Pred_loss'])
-            
-            self.show_iter_info()
-            self.meta_info['iter'] += 1
-
-        self.epoch_info['mean_loss']= np.mean(loss_value)
-        self.epoch_info['pred_mean_loss']= np.mean(pred_loss_value)
-
-        self.show_epoch_info()
-        self.io.print_timer()
 
     def test(self, evaluation=True):
 
         self.model.eval()
-        loader = self.data_loader['train']
+        loader = self.data_loader['test']
         loss_value = []
         result_frag = []
         label_frag = []
-
+        i = 0
         for data, label in loader:
-                    
+            
+            i += 1
+            if((i % 100 )== 0):
+                self.io.print_log('Iteraction : {}'.format(i))
             # get data
             data = data.float().to(self.dev)
             label = label.long().to(self.dev)
@@ -168,15 +189,26 @@ class REC_Processor(Processor):
             # inference
             with torch.no_grad():
                 recon_data, mean, lsig, z = self.model(data)
-            # result_frag.append(recon_data.data.cpu().numpy())
+
+            result_frag.append(mean.data.cpu().numpy())
+            
+            # display_skeleton(data[2].cpu().numpy())
+            
 
             # get loss
             if evaluation:
                 loss = loss_function(recon_data,data,mean,lsig)
                 loss_value.append(loss.item())
-                # label_frag.append(label.data.cpu().numpy())
+                label_frag.append(label.data.cpu().numpy())
+        
+        display_skeleton(data[2].cpu().numpy(),"ori")
+        display_skeleton(recon_data[2].cpu().numpy(),"recon")
 
-        # self.result = np.concatenate(result_frag)
+        self.io.print_log("Start KMeans")
+        # accuracy_pred = KM_classifier(np.concatenate(result_frag),np.concatenate(label_frag),120)
+
+        self.result = accuracy_pred
+
         if evaluation:
             # self.label = np.concatenate(label_frag)
             self.epoch_info['mean_loss']= np.mean(loss_value)
@@ -186,6 +218,30 @@ class REC_Processor(Processor):
             # for k in self.arg.show_topk:
             #     self.show_topk(k)
 
+    def start(self):
+        self.io.print_log('Parameters:\n{}\n'.format(str(vars(self.arg))))
+
+        # test phase
+        
+
+        # the path of weights must be appointed
+        if self.arg.weights is None:
+            raise ValueError('Please appoint --weights.')
+        self.io.print_log('Model:   {}.'.format(self.arg.model))
+        self.io.print_log('Weights: {}.'.format(self.arg.weights))
+
+        # evaluation
+        self.io.print_log('Evaluation Start:')
+        self.test()
+        self.io.print_log('Done.\n')
+
+        # save the output of model
+        if self.arg.save_result:
+            result_dict = dict(
+                zip(self.data_loader['test'].dataset.sample_name,
+                    self.result))
+            self.io.save_pkl(result_dict, 'test_result.pkl')
+    
     @staticmethod
     def get_parser(add_help=False):
 

@@ -25,6 +25,12 @@ class CVAE(nn.Module):
         self.encoder = Encoder(in_channels, n_z, graph_args, edge_importance_weighting)
         self.decoder = Decoder(in_channels, n_z,self.T,self.V, graph_args, edge_importance_weighting)
 
+        self.fc = nn.Sequential(nn.Linear(n_z, 64),
+                                 nn.ReLU(),
+                                 nn.Dropout(0.2),
+                                 nn.Linear(64, 120),
+                                 nn.LogSoftmax(dim=1))
+                                 
     def forward(self, x ):
         
         self.batch_size = x.size(0)
