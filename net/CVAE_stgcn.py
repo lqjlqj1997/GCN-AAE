@@ -8,29 +8,33 @@ import torch.nn.functional as F
 
 from net.utils.graph import Graph
 from net.subnet.st_gcn import *
-
+from net.subnet.discriminator import Discriminator
 import numpy as np
 
 class CVAE(nn.Module):
 
-    def __init__(self, in_channels, T, V, n_z, graph_args,
+    def __init__(self, in_channels, T, V, num_class, graph_args,
                  edge_importance_weighting=False, **kwargs):
 
         super().__init__()
 
         self.T = T
         self.V = V
-        
-        self.n_z = n_z
-        self.encoder = Encoder(in_channels, n_z, graph_args, edge_importance_weighting)
-        self.decoder = Decoder(in_channels, n_z,self.T,self.V, graph_args, edge_importance_weighting)
+        num_class = 120
+        self.num_class = num_class
+
+        self.encoder = Encoder(in_channels, num_class, graph_args, edge_importance_weighting)
+        self.decoder = Decoder(in_channels, num_class,self.T,self.V, graph_args, edge_importance_weighting)
+        self.y_discriminator   = Discriminator(num_class)
+        self.z_discriminator   = Discriminator(num_class)
 
     def forward(self, x ):
         
         self.batch_size = x.size(0)
         self.M = x.size(4)
         mean, lsig = self.encoder(x)
-        
+        mean = F.softmax(mean,dim=1)
+
         z = self.reparameter(mean,lsig)
         
         
@@ -50,7 +54,8 @@ class CVAE(nn.Module):
     
     def reparameter(self, mu, logvar):
         std = torch.exp(0.5*logvar)
-        eps = torch.randn_like(std)
+        
+        eps = torch.randn_like(logvar)
 
         return mu + eps*std
 
@@ -114,6 +119,7 @@ class Encoder(nn.Module):
             # st_gcn(32, 32, kernel_size, 1, **kwargs),
             # st_gcn(32, 32, kernel_size, 1, **kwargs),
             st_gcn(32, 32, kernel_size, 1, **kwargs)
+            
         ))
 
         # initialize parameters for edge importance weighting
@@ -127,6 +133,7 @@ class Encoder(nn.Module):
 
         # fcn for encoding
         self.z_mean = nn.Conv2d(32, n_z, kernel_size=1)
+        
         self.z_lsig = nn.Conv2d(32, n_z, kernel_size=1)
 
     def forward(self, x):
@@ -197,6 +204,7 @@ class Decoder(nn.Module):
         self.fcn = nn.ConvTranspose2d(n_z, 32, kernel_size=(T,V))
 
         self.decoder = nn.ModuleList((
+            
             st_gctn(32, 32, kernel_size, 1, **kwargs),
             # st_gctn(32, 32, kernel_size, 1, **kwargs),
             # st_gctn(32, 32, kernel_size, 1, **kwargs),
