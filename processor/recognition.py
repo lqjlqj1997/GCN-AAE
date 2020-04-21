@@ -24,6 +24,7 @@ from .processor import Processor
 
 
 def weights_init(m):
+    
     classname = m.__class__.__name__
     if classname.find('Conv1d') != -1:
         m.weight.data.normal_(0.0, 0.02)
@@ -37,7 +38,7 @@ def weights_init(m):
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
 
-def between_frame_loss(gait1, gait2, thres=0.01):
+def between_frame_loss(gait1, gait2,args):
     
     N,C,T,V,M = gait1.size()
 
@@ -49,13 +50,13 @@ def between_frame_loss(gait1, gait2, thres=0.01):
     
     # mid_tstep = np.int(num_tsteps / 2) - 1
 
-    loss = nn.functional.mse_loss(g1, g2)
+    loss = nn.functional.mse_loss(g1, g2,size_average=False,**args)
     
 
     #motion_loss
     t1 = g1[:,2:] - 2 * g1[:,1:-1] + g1[:,:-2]
     t2 = g2[:,2:] - 2 * g2[:,1:-1] + g2[:,:-2]
-    loss += nn.functional.mse_loss(t1,t2)
+    loss += nn.functional.mse_loss(t1,t2,size_average=False,**args)
         
     # loss += nn.functional.mse_loss(g1[:, tidx, :]-g1[:, 0, :]         , g2[:, tidx, :]-g2[:, 0, :], reduction = "sum")
     # loss += nn.functional.mse_loss(g1[:, tidx, :]-g1[:, mid_tstep, :] , g2[:, tidx, :]-g2[:, mid_tstep, :] ,reduction = "sum")
@@ -70,16 +71,19 @@ class REC_Processor(Processor):
     """
         Processor for Skeleton-based Action Recgnition
     """
+    
 
     def loss(self,recon_x, x, mu, logvar):
+        # args = { "size_average":False,"reduce": True, "reduction" : "sum"}
+        args = {"reduction" : "sum"}
         N,C,T,V,M = x.size()
         valid = Variable(torch.zeros(x.shape[0], 1 ).fill_(1.0), requires_grad=False).float().to(self.dev)
         BCE = 0
         for m in range(M):
             BCE += nn.functional.mse_loss(recon_x[:,:,:,:,m], x[:,:,:,:,m])
 
-        KLD =  F.binary_cross_entropy(self.model.y_discriminator(mu), valid )
-        KLD += F.binary_cross_entropy(self.model.z_discriminator(logvar), valid )
+        KLD =  F.binary_cross_entropy(self.model.y_discriminator(mu), valid, **args )
+        KLD += F.binary_cross_entropy(self.model.z_discriminator(logvar), valid,**args )
 
         # KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),1).mean()
         
@@ -200,12 +204,15 @@ class REC_Processor(Processor):
             # inference
             with torch.no_grad():
                 recon_data, mean, lsig, z = self.model(data)
+                _,target    = mean.max(dim=1)
+                target      = target.view(-1,1) 
             # result_frag.append(recon_data.data.cpu().numpy())
-
+            
             # get loss
             if evaluation:
                 loss = self.loss(recon_data,data,mean,lsig)
                 loss_value.append(loss.item())
+
                 # label_frag.append(label.data.cpu().numpy())
 
         # self.result = np.concatenate(result_frag)
