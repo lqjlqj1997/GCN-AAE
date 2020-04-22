@@ -6,6 +6,7 @@ import sys
 import argparse
 import yaml
 import numpy as np
+import time
 
 # torch
 import torch
@@ -132,6 +133,8 @@ class REC_Processor(Processor):
         self.model.train()
         self.adjust_lr()
         self.meta_info['iter'] = 0
+        self.io.record_time()
+
         loader = self.data_loader['train']
         loss_value = []
         # print(len(loader.dataset))
@@ -179,6 +182,8 @@ class REC_Processor(Processor):
             self.iter_info['y_loss'] = y_loss.data.item()
             self.iter_info['z_loss'] = z_loss.data.item()
             self.iter_info['lr'] = '{:.6f}'.format(self.lr)
+            self.iter_info['time'] = '{:.6f}'.format(int(time.time() - self.io.cur_time))
+            
             loss_value.append(self.iter_info['loss'])
             self.show_iter_info()
             self.meta_info['iter'] += 1

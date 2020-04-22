@@ -93,7 +93,7 @@ class Encoder(nn.Module):
     """
 
     def __init__(self, in_channels, n_z, graph_args,
-                 edge_importance_weighting=False, temporal_kernel_size=9, **kwargs):
+                 edge_importance_weighting=False, temporal_kernel_size=149, **kwargs):
         super().__init__()
 
         # load graph
@@ -187,7 +187,7 @@ class Decoder(nn.Module):
     """
 
     def __init__(self, in_channels, n_z,T,V, graph_args,
-                 edge_importance_weighting=False, temporal_kernel_size=75, **kwargs):
+                 edge_importance_weighting=False, temporal_kernel_size=149, **kwargs):
         super().__init__()
 
         # load graph
