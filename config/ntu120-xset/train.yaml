@@ -15,7 +15,7 @@ model_args:
   in_channels: 3
   T: 300
   V: 25
-  n_z: 32
+  num_class: 120
   dropout: 0.5
   edge_importance_weighting: True
   graph_args:
@@ -24,7 +24,7 @@ model_args:
 
 
 #optim
-optimizer: "SGD"
+optimizer: "Adam"
 nesterov: "True"
 weight_decay: 0.0001
 base_lr: 0.1

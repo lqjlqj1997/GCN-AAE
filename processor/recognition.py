@@ -50,13 +50,13 @@ def between_frame_loss(gait1, gait2,args):
     
     # mid_tstep = np.int(num_tsteps / 2) - 1
 
-    loss = nn.functional.mse_loss(g1, g2,size_average=False,**args)
+    loss = nn.functional.mse_loss(g1, g2,**args)
     
 
     #motion_loss
     t1 = g1[:,2:] - 2 * g1[:,1:-1] + g1[:,:-2]
     t2 = g2[:,2:] - 2 * g2[:,1:-1] + g2[:,:-2]
-    loss += nn.functional.mse_loss(t1,t2,size_average=False,**args)
+    loss += nn.functional.mse_loss(t1,t2,**args)
         
     # loss += nn.functional.mse_loss(g1[:, tidx, :]-g1[:, 0, :]         , g2[:, tidx, :]-g2[:, 0, :], reduction = "sum")
     # loss += nn.functional.mse_loss(g1[:, tidx, :]-g1[:, mid_tstep, :] , g2[:, tidx, :]-g2[:, mid_tstep, :] ,reduction = "sum")
@@ -80,7 +80,7 @@ class REC_Processor(Processor):
         valid = Variable(torch.zeros(x.shape[0], 1 ).fill_(1.0), requires_grad=False).float().to(self.dev)
         BCE = 0
         for m in range(M):
-            BCE += nn.functional.mse_loss(recon_x[:,:,:,:,m], x[:,:,:,:,m])
+            BCE += between_frame_loss(recon_x[:,:,:,:,m].view(N,C,T,V,1), x[:,:,:,:,m].view(N,C,T,V,1),args)
 
         KLD =  F.binary_cross_entropy(self.model.y_discriminator(mu), valid, **args )
         KLD += F.binary_cross_entropy(self.model.z_discriminator(logvar), valid,**args )
