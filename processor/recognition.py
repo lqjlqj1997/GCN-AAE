@@ -56,6 +56,7 @@ def between_frame_loss(gait1, gait2,args):
     #motion_loss
     t1 = g1[:,2:] - 2 * g1[:,1:-1] + g1[:,:-2]
     t2 = g2[:,2:] - 2 * g2[:,1:-1] + g2[:,:-2]
+
     loss += nn.functional.mse_loss(t1,t2,**args)
         
     # loss += nn.functional.mse_loss(g1[:, tidx, :]-g1[:, 0, :]         , g2[:, tidx, :]-g2[:, 0, :], reduction = "sum")
@@ -75,9 +76,10 @@ class REC_Processor(Processor):
 
     def loss(self,recon_x, x, mu, logvar):
         # args = { "size_average":False,"reduce": True, "reduction" : "sum"}
-        args = {"reduction" : "sum"}
+        args = {"reduction" : "mean"}
         N,C,T,V,M = x.size()
         valid = Variable(torch.zeros(x.shape[0], 1 ).fill_(1.0), requires_grad=False).float().to(self.dev)
+        
         BCE = 0
         for m in range(M):
             BCE += between_frame_loss(recon_x[:,:,:,:,m].view(N,C,T,V,1), x[:,:,:,:,m].view(N,C,T,V,1),args)
@@ -114,14 +116,11 @@ class REC_Processor(Processor):
             raise ValueError()
 
     def adjust_lr(self):
-        if self.arg.optimizer == 'SGD' and self.arg.step:
-            lr = self.arg.base_lr * (
-                0.1**np.sum(self.meta_info['epoch']>= np.array(self.arg.step)))
+        if self.arg.step:
+            lr = self.arg.base_lr * (0.1**np.sum(self.meta_info['epoch']>= np.array(self.arg.step)))
             for param_group in self.optimizer.param_groups:
                 param_group['lr'] = lr
             self.lr = lr
-        else:
-            self.lr = self.arg.base_lr
 
     def show_topk(self, k):
         rank = self.result.argsort()
@@ -132,6 +131,7 @@ class REC_Processor(Processor):
     def train(self):
         self.model.train()
         self.adjust_lr()
+        self.meta_info['iter'] = 0
         loader = self.data_loader['train']
         loss_value = []
         # print(len(loader.dataset))
@@ -151,6 +151,9 @@ class REC_Processor(Processor):
             loss.backward()
             # self.model.decoder.zero_grad()
             # self.optimizer.step()
+
+            self.model.y_discriminator.zero_grad()
+            self.model.z_discriminator.zero_grad()
 
             #discriminator train
             valid = Variable(torch.zeros(label.shape[0], 1 ).fill_(1.0), requires_grad=False).float().to(self.dev)
@@ -200,30 +203,31 @@ class REC_Processor(Processor):
             # get data
             data = data.float().to(self.dev)
             label = label.long().to(self.dev)
-
+            
             # inference
             with torch.no_grad():
                 recon_data, mean, lsig, z = self.model(data)
-                _,target    = mean.max(dim=1)
-                target      = target.view(-1,1) 
-            # result_frag.append(recon_data.data.cpu().numpy())
+            
+            result_frag.append(mean.data.cpu().numpy())
             
             # get loss
             if evaluation:
                 loss = self.loss(recon_data,data,mean,lsig)
                 loss_value.append(loss.item())
+                
+                label_frag.append(label.data.cpu().numpy())
 
-                # label_frag.append(label.data.cpu().numpy())
-
-        # self.result = np.concatenate(result_frag)
+        self.result = np.concatenate(result_frag)
         if evaluation:
-            # self.label = np.concatenate(label_frag)
+            self.label = np.concatenate(label_frag)
+            self.io.print_log("Evaluation {}:".format(self.meta_info["epoch"]))
+            self.epoch_info['label'] = np.concatenate(label_frag)
             self.epoch_info['mean_loss']= np.mean(loss_value)
             self.show_epoch_info()
 
             # show top-k accuracy
-            # for k in self.arg.show_topk:
-            #     self.show_topk(k)
+            for k in self.arg.show_topk:
+                self.show_topk(k)
 
     @staticmethod
     def get_parser(add_help=False):

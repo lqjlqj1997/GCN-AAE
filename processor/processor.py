@@ -6,6 +6,7 @@ import argparse
 import yaml
 import numpy as np
 import datetime
+import random
 
 # torch
 import torch
@@ -30,6 +31,7 @@ class Processor(IO):
 
         self.load_arg(argv)
         self.init_environment()
+        self.init_seed()
         self.load_model()
         self.load_weights()
         self.gpu()
@@ -39,10 +41,18 @@ class Processor(IO):
     def init_environment(self):
 
         super().init_environment()
-        self.result = dict()
-        self.iter_info = dict()
+        self.result     = dict()
+        self.iter_info  = dict()
         self.epoch_info = dict()
-        self.meta_info = dict(epoch=0, iter=0)
+        self.meta_info  = dict(epoch=0, iter=0)
+        self.seed       = self.arg.seed
+
+    def init_seed(self):
+        if(self.seed is not None):
+            torch.cuda.manual_seed_all(self.seed)
+            torch.manual_seed(self.seed)
+            np.random.seed(self.seed)
+            random.seed(self.seed)
 
     def load_optimizer(self):
         pass
@@ -173,6 +183,7 @@ class Processor(IO):
         parser.add_argument('--device', type=int, default=0, nargs='+', help='the indexes of GPUs for training or testing')
 
         # visulize and debug
+        parser.add_argument('--seed', type=int, default=None, help='the seed for random generator')
         parser.add_argument('--log_interval', type=int, default=100, help='the interval for printing messages (#iteration)')
         parser.add_argument('--save_interval', type=int, default=10, help='the interval for storing models (#iteration)')
         parser.add_argument('--eval_interval', type=int, default=5, help='the interval for evaluating models (#iteration)')
