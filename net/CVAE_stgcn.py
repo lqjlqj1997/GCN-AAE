@@ -20,7 +20,7 @@ class CVAE(nn.Module):
 
         self.T = T
         self.V = V
-        num_class = 120
+        # num_class = 120
         self.num_class = num_class
 
         self.encoder = Encoder(in_channels, num_class, graph_args, edge_importance_weighting)
@@ -109,12 +109,12 @@ class Encoder(nn.Module):
         self.data_bn = nn.BatchNorm1d(in_channels * A.size(1))
 
         self.encoder = nn.ModuleList((
-            st_gcn(in_channels, 256, kernel_size, 1, **kwargs),
+            st_gcn(in_channels, 64, kernel_size, 1, **kwargs),
             # st_gcn(64, 64, kernel_size, 1, **kwargs),
             # st_gcn(64, 64, kernel_size, 1, **kwargs),
             # st_gcn(64, 64, kernel_size, 1, **kwargs),
             # st_gcn(64, 64, kernel_size, 1, **kwargs),
-            st_gcn(256, 128 , kernel_size, 1, **kwargs),
+            st_gcn(64, 128 , kernel_size, 1, **kwargs),
             # st_gcn(32, 32, kernel_size, 1, **kwargs),
             # st_gcn(32, 32, kernel_size, 1, **kwargs),
             # st_gcn(32, 32, kernel_size, 1, **kwargs),
@@ -209,12 +209,12 @@ class Decoder(nn.Module):
             # st_gctn(32, 32, kernel_size, 1, **kwargs),
             # st_gctn(32, 32, kernel_size, 1, **kwargs),
             # st_gctn(32, 32, kernel_size, 1, **kwargs),
-            st_gctn(128, 256, kernel_size, 1, **kwargs),
+            st_gctn(128, 64, kernel_size, 1, **kwargs),
             # st_gctn(64, 64, kernel_size, 1, **kwargs),
             # st_gctn(64, 64, kernel_size, 1, **kwargs),
             # st_gctn(64, 64, kernel_size, 1, **kwargs),
             # st_gctn(64, 64, kernel_size, 1, **kwargs),
-            st_gctn(256, in_channels, kernel_size, 1, ** kwargs)
+            st_gctn(64, in_channels, kernel_size, 1, ** kwargs)
         ))
 
         # initialize parameters for edge importance weighting

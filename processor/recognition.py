@@ -7,6 +7,7 @@ import argparse
 import yaml
 import numpy as np
 import time
+import itertools
 
 # torch
 import torch
@@ -75,18 +76,29 @@ class REC_Processor(Processor):
     """
     
 
-    def loss(self,recon_x, x, mu, logvar):
+    def loss(self,recon_x, x,label, mu, logvar):
         # args = { "size_average":False,"reduce": True, "reduction" : "sum"}
-        args = {"reduction" : "mean"}
+        args = {"reduction" : "sum"}
+        
         N,C,T,V,M = x.size()
         valid = Variable(torch.zeros(x.shape[0], 1 ).fill_(1.0), requires_grad=False).float().to(self.dev)
         
-        BCE = 0
-        for m in range(M):
-            BCE += between_frame_loss(recon_x[:,:,:,:,m].view(N,C,T,V,1), x[:,:,:,:,m].view(N,C,T,V,1),args)
+        BCE = nn.functional.mse_loss(g1, g2,**args)
+    
+        t1 = x[:,:,1:] - x[:,:,:-1]
+        t2 = recon_x[:,:,1:] - recon_x[:,:,:-1]
+
+        BCE += nn.functional.mse_loss(t1,t2,**args)
+
+        #motion_loss
+        a1 = x[:,:,2:] - 2 * x[:,:,1:-1] + x[:,:,:-2]
+        a2 = recon_x[:,:,2:] - 2 * recon_x[:,:,1:-1] + recon_x[:,:,:-2]
+
+        BCE += nn.functional.mse_loss(a1,a2,**args)
 
         KLD =  F.binary_cross_entropy(self.model.y_discriminator(mu), valid, **args )
         KLD += F.binary_cross_entropy(self.model.z_discriminator(logvar), valid,**args )
+        KLD += F.cross_entropy(mu, label, **args )
 
         # KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),1).mean()
         
@@ -100,27 +112,55 @@ class REC_Processor(Processor):
     
     def load_optimizer(self):
         if self.arg.optimizer == 'SGD':
-            self.optimizer = optim.SGD(
-                self.model.parameters(),
+            self.optimizer = dict() 
+            self.optimizer["autoencoder"] =  optim.SGD(
+                itertools.chain(self.model.encoder.parameters(), self.model.parameters()),
+                lr=self.arg.base_lr,
+                momentum=0.9,
+                nesterov=self.arg.nesterov,
+                weight_decay=self.arg.weight_decay)
+
+            self.optimizer["y_discriminator"] =  optim.SGD(
+                self.model.y_discriminator.parameters(),
+                lr=self.arg.base_lr,
+                momentum=0.9,
+                nesterov=self.arg.nesterov,
+                weight_decay=self.arg.weight_decay)
+
+            self.optimizer["z_discriminator"] =  optim.SGD(
+                self.model.z_discriminator.parameters(),
                 lr=self.arg.base_lr,
                 momentum=0.9,
                 nesterov=self.arg.nesterov,
                 weight_decay=self.arg.weight_decay)
 
         elif self.arg.optimizer == 'Adam':
-            self.optimizer = optim.Adam(
-                self.model.parameters(),
+            self.optimizer = dict()
+
+            self.optimizer["autoencoder"] = optim.Adam(
+                itertools.chain(self.model.encoder.parameters(), self.model.parameters()),
                 lr=self.arg.base_lr,
                 weight_decay=self.arg.weight_decay)
-        
+
+            self.optimizer["y_discriminator"] = optim.Adam(
+                self.model.y_discriminator.parameters(),
+                lr=self.arg.base_lr,
+                weight_decay=self.arg.weight_decay)
+            
+            self.optimizer["z_discriminator"] = optim.Adam(
+                self.model.z_discriminator.parameters(),
+                lr=self.arg.base_lr,
+                weight_decay=self.arg.weight_decay)
+                
         else:
             raise ValueError()
 
     def adjust_lr(self):
         if self.arg.step:
             lr = self.arg.base_lr * (0.1**np.sum(self.meta_info['epoch']>= np.array(self.arg.step)))
-            for param_group in self.optimizer.param_groups:
-                param_group['lr'] = lr
+            for optimizer in self.optimizer:
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = lr
             self.lr = lr
 
     def show_topk(self, k):
@@ -150,13 +190,14 @@ class REC_Processor(Processor):
             loss = self.loss(recon_data, data, mean, logvar)
             
             # backward
-            self.optimizer.zero_grad()
+            self.optimizer["autoencoder"].zero_grad()
             loss.backward()
+            self.optimizer["autoencoder"].step()
+
             # self.model.decoder.zero_grad()
             # self.optimizer.step()
 
-            self.model.y_discriminator.zero_grad()
-            self.model.z_discriminator.zero_grad()
+            
 
             #discriminator train
             valid = Variable(torch.zeros(label.shape[0], 1 ).fill_(1.0), requires_grad=False).float().to(self.dev)
@@ -169,13 +210,18 @@ class REC_Processor(Processor):
             y_loss =  F.binary_cross_entropy(self.model.y_discriminator(label.detach()), valid )
             y_loss += F.binary_cross_entropy(self.model.y_discriminator(mean.detach()), fake )
             y_loss = y_loss * 0.5
+            
+            self.optimizer["y_discriminator"].zero_grad()
             y_loss.backward()
+            self.optimizer["y_discriminator"].step()
 
             z_loss = F.binary_cross_entropy(self.model.z_discriminator(sample_z.detach()),valid )
             z_loss += F.binary_cross_entropy(self.model.z_discriminator(logvar.detach()), fake )
             z_loss = z_loss * 0.5
+
+            self.optimizer["z_discriminator"].zero_grad()
             z_loss.backward()
-            self.optimizer.step()
+            self.optimizer["z_discriminator"].step()
 
             # statistics
             self.iter_info['loss'] = loss.data.item()
