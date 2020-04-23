@@ -78,31 +78,31 @@ class REC_Processor(Processor):
 
     def loss(self,recon_x, x,label, mu, logvar):
         # args = { "size_average":False,"reduce": True, "reduction" : "sum"}
-        args = {"reduction" : "sum"}
+        args = {"reduction" : "mean"}
         
         N,C,T,V,M = x.size()
         valid = Variable(torch.zeros(x.shape[0], 1 ).fill_(1.0), requires_grad=False).float().to(self.dev)
         
-        BCE = nn.functional.mse_loss(g1, g2,**args)
+        BCE = nn.functional.mse_loss(recon_x, x,**args)
     
-        t1 = x[:,:,1:] - x[:,:,:-1]
+        t1 = x[:,:,1:]       - x[:,:,:-1]
         t2 = recon_x[:,:,1:] - recon_x[:,:,:-1]
 
         BCE += nn.functional.mse_loss(t1,t2,**args)
 
         #motion_loss
-        a1 = x[:,:,2:] - 2 * x[:,:,1:-1] + x[:,:,:-2]
+        a1 = x[:,:,2:]       - 2 * x[:,:,1:-1]       + x[:,:,:-2]
         a2 = recon_x[:,:,2:] - 2 * recon_x[:,:,1:-1] + recon_x[:,:,:-2]
 
         BCE += nn.functional.mse_loss(a1,a2,**args)
 
         KLD =  F.binary_cross_entropy(self.model.y_discriminator(mu), valid, **args )
         KLD += F.binary_cross_entropy(self.model.z_discriminator(logvar), valid,**args )
-        KLD += F.cross_entropy(mu, label, **args )
+        # KLD += F.cross_entropy(mu, label, **args )
 
         # KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),1).mean()
         
-        return 0.998 * BCE + 0.002 * KLD
+        return 0.898 * BCE + 0.002 * KLD
 
     def load_model(self):
         self.model = self.io.load_model(self.arg.model,
@@ -158,7 +158,7 @@ class REC_Processor(Processor):
     def adjust_lr(self):
         if self.arg.step:
             lr = self.arg.base_lr * (0.1**np.sum(self.meta_info['epoch']>= np.array(self.arg.step)))
-            for optimizer in self.optimizer:
+            for name, optimizer in self.optimizer.items():
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = lr
             self.lr = lr
@@ -183,11 +183,17 @@ class REC_Processor(Processor):
             # get data
             data = data.float().to(self.dev)
             label = label.long().to(self.dev)
+            
+            label[label==13] = 1
+            label[label==90] = 2
+            label[label==111] = 3
+            label[label==116] = 4
+            # print(label)
 
             # forward
             recon_data, mean, logvar, z = self.model(data)
 
-            loss = self.loss(recon_data, data, mean, logvar)
+            loss = self.loss(recon_data, data,label , mean, logvar)
             
             # backward
             self.optimizer["autoencoder"].zero_grad()
@@ -203,7 +209,8 @@ class REC_Processor(Processor):
             valid = Variable(torch.zeros(label.shape[0], 1 ).fill_(1.0), requires_grad=False).float().to(self.dev)
             fake  = Variable(torch.zeros(label.shape[0], 1), requires_grad=False).float().to(self.dev)
             
-            label       = F.one_hot(label, num_classes = 120).float().to(self.dev)
+            
+            label       = F.one_hot(label, num_classes = 5).float().to(self.dev)
             sample_z    = torch.randn_like(logvar)
 
             # self.optimizer.zero_grad()
