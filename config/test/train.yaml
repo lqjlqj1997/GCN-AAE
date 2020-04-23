@@ -1,0 +1,40 @@
+work_dir: ./work_dir/recognition/ntu-xsub/ST_VAE
+seed: 02130511
+
+# feeder
+feeder: feeders.feeder.Feeder
+train_feeder_args:
+  data_path: ./data/ntu120/test/train_data_joint.npy
+  label_path: ./data/ntu120/test/train_label.pkl
+test_feeder_args:
+  data_path: ./data/ntu120/test/train_data_joint.npy
+  label_path: ./data/ntu120/test/train_label.pkl
+
+# model
+model: net.CVAE_stgcn.CVAE
+model_args:
+  in_channels: 3
+  T: 300
+  V: 25
+  num_class: 5
+  dropout: 0.5
+  edge_importance_weighting: True
+  graph_args:
+    layout: 'ntu-rgb+d'
+    strategy: 'spatial'
+
+#optim
+optimizer: "Adam"
+nesterov: "True"
+weight_decay: 0.0001
+base_lr: 0.1
+step: [40,60,70]
+
+# training
+device: [0]
+batch_size: 32
+test_batch_size: 32
+num_epoch: 80
+
+
+
