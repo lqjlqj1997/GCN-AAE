@@ -16,6 +16,7 @@ model_args:
   in_channels: 3
   T: 300
   V: 25
+  M: 2
   num_class: 5
   dropout: 0.5
   edge_importance_weighting: True
