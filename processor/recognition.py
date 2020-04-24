@@ -78,31 +78,38 @@ class REC_Processor(Processor):
 
     def loss(self,recon_x, x,label, mu, logvar):
         # args = { "size_average":False,"reduce": True, "reduction" : "sum"}
-        args = {"reduction" : "mean"}
-        
+        args = {"reduction" : "sum"}
+
+        weight = torch.tensor([1, 1, 1, 20, 2],requires_grad=False).to(self.dev)
+
+
         N,C,T,V,M = x.size()
         valid = Variable(torch.zeros(x.shape[0], 1 ).fill_(1.0), requires_grad=False).float().to(self.dev)
         
-        BCE = nn.functional.mse_loss(recon_x, x,**args)
+        BCE = weight[0] * nn.functional.mse_loss(recon_x, x,**args)
     
         t1 = x[:,:,1:]       - x[:,:,:-1]
         t2 = recon_x[:,:,1:] - recon_x[:,:,:-1]
 
-        BCE += nn.functional.mse_loss(t1,t2,**args)
+        BCE += weight[1] * nn.functional.mse_loss(t1,t2,**args)
 
         #motion_loss
         a1 = x[:,:,2:]       - 2 * x[:,:,1:-1]       + x[:,:,:-2]
         a2 = recon_x[:,:,2:] - 2 * recon_x[:,:,1:-1] + recon_x[:,:,:-2]
 
-        BCE += nn.functional.mse_loss(a1,a2,**args)
+        BCE += weight[2] * nn.functional.mse_loss(a1,a2,**args)
+
+        cat_loss = F.cross_entropy(mu, label, **args )
+        cat_loss = weight[3] * cat_loss
 
         KLD =  F.binary_cross_entropy(self.model.y_discriminator(mu), valid, **args )
         KLD += F.binary_cross_entropy(self.model.z_discriminator(logvar), valid,**args )
-        # KLD += F.cross_entropy(mu, label, **args )
+        KLD = weight[4] * KLD
 
+        
         # KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),1).mean()
         
-        return 0.898 * BCE + 0.002 * KLD
+        return (BCE + cat_loss + KLD)/weight.sum() ,cat_loss
 
     def load_model(self):
         self.model = self.io.load_model(self.arg.model,
@@ -183,7 +190,11 @@ class REC_Processor(Processor):
             # get data
             data = data.float().to(self.dev)
             label = label.long().to(self.dev)
-            
+            N,C,T,V,M = data.size()
+
+            # print(data.shape[4])
+            # data = data[:,:,:,:,0].view(N,C,T,V,1)
+    
             label[label==13] = 1
             label[label==90] = 2
             label[label==111] = 3
@@ -193,7 +204,7 @@ class REC_Processor(Processor):
             # forward
             recon_data, mean, logvar, z = self.model(data)
 
-            loss = self.loss(recon_data, data,label , mean, logvar)
+            loss, cat_loss = self.loss(recon_data, data,label , mean, logvar)
             
             # backward
             self.optimizer["autoencoder"].zero_grad()
@@ -210,11 +221,11 @@ class REC_Processor(Processor):
             fake  = Variable(torch.zeros(label.shape[0], 1), requires_grad=False).float().to(self.dev)
             
             
-            label       = F.one_hot(label, num_classes = 5).float().to(self.dev)
+            one_hot_label       = F.one_hot(label, num_classes = 5).float().to(self.dev)
             sample_z    = torch.randn_like(logvar)
 
             # self.optimizer.zero_grad()
-            y_loss =  F.binary_cross_entropy(self.model.y_discriminator(label.detach()), valid )
+            y_loss =  F.binary_cross_entropy(self.model.y_discriminator(one_hot_label.detach()), valid )
             y_loss += F.binary_cross_entropy(self.model.y_discriminator(mean.detach()), fake )
             y_loss = y_loss * 0.5
             
@@ -230,8 +241,14 @@ class REC_Processor(Processor):
             z_loss.backward()
             self.optimizer["z_discriminator"].step()
 
+
+            (values, indices) = mean.max(dim=1)
+            
+            print
             # statistics
             self.iter_info['loss'] = loss.data.item()
+            self.iter_info['cat_loss'] = cat_loss.data.item()
+            self.iter_info['acc'] = "{} / {}".format((label == indices).sum().data.item(),len(label) )
             self.iter_info['y_loss'] = y_loss.data.item()
             self.iter_info['z_loss'] = z_loss.data.item()
             self.iter_info['lr'] = '{:.6f}'.format(self.lr)
@@ -241,6 +258,8 @@ class REC_Processor(Processor):
             self.show_iter_info()
             self.meta_info['iter'] += 1
 
+        print(indices.view(-1))
+        print(label.view(-1))
         np.save("/content/result/data{}.npy".format(self.meta_info["epoch"]),data.cpu().numpy())
         np.save("/content/result/recon{}.npy".format(self.meta_info["epoch"]),recon_data.detach().cpu().numpy())
         

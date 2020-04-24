@@ -2,35 +2,41 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.common import *
-from subnet.st_gcn
+from net.subnet.discriminator import Discriminator
 
 class CVAE(nn.Module):
 
-    def __init__(self, in_channels, T, n_z, num_classes):
+    def __init__(self, in_channels, T, n_z, num_class):
 
         super().__init__()
 
         self.T = T
         self.n_z = n_z
-        self.encoder = Encoder(T, in_channels+num_classes, n_z)
-        self.decoder = Decoder(T, in_channels, n_z+num_classes)
-        # self.encoder = Encoder(in_channels, n_z, graph_args, edge_importance_weighting)
-        # self.decoder = Decoder(in_channels, n_z, graph_args, edge_importance_weighting)
+        self.encoder = Encoder(T, in_channels, num_class)
+        self.decoder = Decoder(T, in_channels, num_class)
 
-    def forward(self, x, lenc, ldec):
+        self.y_discriminator   = Discriminator(num_class)
+        self.z_discriminator   = Discriminator(num_class)
 
-        batch_size = x.size(0)
+    def forward(self, x):
 
-        mean, lsig = self.encoder(x, lenc)
+        M,N,T,VC = x.size()
 
-        sig = torch.exp(0.5 * lsig)
-        eps = to_var(torch.randn([batch_size, self.n_z]))
-        z = eps * sig + mean
+        mean, logvar = self.encoder(x)
+        mean = F.softmax(mean,dim=1)  
+        
+        z = self.reparameter(mean,logvar)
+        
+        recon_x = self.decoder(z, T, M)
 
-        recon_x = self.decoder(z, ldec, self.T)
+        return recon_x, mean, logvar, z
 
-        return recon_x, mean, lsig, z
+    def reparameter(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        
+        eps = torch.randn_like(logvar)
+
+        return mu + eps*std
 
     def inference(self, n=1, ldec=None):
 
@@ -67,6 +73,7 @@ class Encoder(nn.Module):
 
         self.data_bn = nn.BatchNorm1d(in_channels)
         # self.lstm = nn.LSTM(in_channels, 64, 3)
+
         self.lstm = nn.ModuleList((
             nn.LSTM(in_channels, 64, 3),
             nn.LSTM(64, 32, 3)
@@ -76,10 +83,11 @@ class Encoder(nn.Module):
         self.z_mean = nn.Conv2d(T*32, n_z, kernel_size=1)
         self.z_lsig = nn.Conv2d(T*32, n_z, kernel_size=1)
 
-    def forward(self, x, l):
+    def forward(self, x):
+        # x : size = N ,T, Features
+        M,N,T,F = x.size()
 
-        # concat
-        x = torch.cat((x, l), dim=2)
+        x = x.view(N*M,T,F)
 
         # data normalization
         x = x.permute(0, 2, 1).contiguous()
@@ -89,10 +97,20 @@ class Encoder(nn.Module):
         # forward
         for layer in self.lstm:
             x, _ = layer(x)
+        
         # x = x[-1, :, :].view(x.shape[1], x.shape[2], 1, 1)
-        x = x.view(x.shape[1], x.shape[0]*x.shape[2], 1, 1)
+        # print(x.shape)
+        
+        x = x.permute(1,0,2).contiguous().view( N , M , x.shape[0]*x.shape[2],1,1)
+        
 
+        # print(x.shape)
+
+        x = x.mean(dim = 1)
+        
+        # print(x.shape)
         # prediction
+
         mean = self.z_mean(x)
         mean = mean.view(mean.size(0), -1)
         lsig = self.z_lsig(x)
@@ -135,20 +153,24 @@ class Decoder(nn.Module):
         self.data_bn = nn.BatchNorm1d(in_channels)
         self.out = nn.Sigmoid()
 
-    def forward(self, z, l, T):
-
-        N = z.size()[0]
+    def forward(self, z,T,M):
+        
+        z = z.repeat(M,1)
+        
+        N,n_z = z.size()
         # concat
-        z = torch.cat((z, l), dim=1)
+        
 
         # reshape
-        z = z.view(N, z.size()[1], 1, 1)
+        z = z.view(N, n_z, 1, 1)
 
         # forward
         z = self.fcn(z)
         # z = z.view(z.shape[0], z.shape[1], 1)
         # z = z.repeat([1, 1, T]).permute(2, 0, 1).contiguous()
+
         z = z.view(T, z.shape[0], int(z.shape[1]/T))
+        
         # x = z.permute(0, 4, 3, 1, 2).contiguous()
         # x = x.view(N * M, V * C, T)
         #
@@ -165,6 +187,6 @@ class Decoder(nn.Module):
         z = z.permute(1, 2, 0).contiguous()
         z = self.data_bn(z)
         z = z.permute(0, 2, 1).contiguous()
-        z = self.out(z)
+        # z = self.out(z)
 
         return z
