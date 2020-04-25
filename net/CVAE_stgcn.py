@@ -13,66 +13,61 @@ import numpy as np
 
 class CVAE(nn.Module):
 
-    def __init__(self, in_channels, T, V, M, num_class, graph_args,
+    def __init__(self, in_channels, T, V, num_class, graph_args,
                  edge_importance_weighting=False, **kwargs):
 
         super().__init__()
         temporal_kernel_size= [299,299]
+        
         self.T = T
         self.V = V
-        self.M = M
-        # num_class = 120
         self.num_class = num_class
 
-        self.encoder = Encoder(in_channels, num_class, self.M,  graph_args, edge_importance_weighting,temporal_kernel_size[0])
-        # self.fcn = nn.Linear()
-        self.decoder = Decoder(in_channels, num_class,self.T,self.V,self.M, graph_args, edge_importance_weighting,temporal_kernel_size[1])
+        self.encoder = Encoder( in_channels, num_class, 
+                                graph_args , edge_importance_weighting,
+                                temporal_kernel_size[0]
+                                )
+        self.decoder = Decoder( in_channels, num_class, self.T, self.V, 
+                                graph_args , edge_importance_weighting,
+                                temporal_kernel_size[1]
+                                )
+        
         self.y_discriminator   = Discriminator(num_class)
         self.z_discriminator   = Discriminator(num_class)
 
     def forward(self, x ):
-        
+
         N,C,T,V,M = x.size()
         
-        # mean, lsig
-        # for m in range(M): 
-            
-        #     body = x[:,:,:,:,m].view(N,C,T,V,1)
+        # encoder
+        cat_y, latent_z = self.encoder(x)
 
-            # mean, lsig = self.encoder(body)
-        
-        mean, lsig = self.encoder(x)
-    
-        mean = F.softmax(mean,dim=1)
+        # Catogerise 
+        cat_y = F.softmax( cat_y , dim=1 )
 
-        z = self.reparameter(mean.repeat(M,1),lsig)
-        z = z.view(N,M,-1)
+        # Reparameter
+        z = self.reparameter(cat_y.repeat(M, 1), latent_z)
+        z = z.view(N, M, -1)
         
 
         recon_x = self.decoder(z)
 
-        return recon_x, mean, lsig, z
+        return recon_x, cat_y, latent_z, z
     
-    # def reparameter(self,batch_size,mean,lsig):
-        
-    #     sig = torch.exp(0.5 * lsig)
-        
-    #     eps = to_var(torch.randn([batch_size, self.n_z]))
+    
+    def reparameter(self, mean, logvar):
 
-    #     z = eps * sig + mean
-    #     return z
-    
-    def reparameter(self, mu, logvar):
-        std = torch.exp(0.5*logvar)
-        
+        std = torch.exp(0.5 * logvar)    
         eps = torch.randn_like(logvar)
 
-        return mu + eps*std
+        return mean + eps*std
 
-    def inference(self, n=1, ldec=None):
+    def inference(self, n=1, class_label = [0] ):
 
+        
         batch_size = n
-        z = torch.tensor(np.random.normal(0, 1, (batch_size, self.n_z)))
+
+        z = torch.tensor(np.random.normal(0, 1, (batch_size, self.num_class )))
         
         if(self.is_cuda):
             z = z.cuda()
@@ -102,33 +97,29 @@ class Encoder(nn.Module):
             :math:`M_{in}` is the number of instance in a frame.
     """
 
-    def __init__(self, in_channels, n_z, M, graph_args,
-                 edge_importance_weighting=False, temporal_kernel_size=9, **kwargs):
+    def __init__(self, in_channels, num_class, graph_args,
+                 edge_importance_weighting = False, 
+                 temporal_kernel_size = 9, **kwargs):
+        
         super().__init__()
 
         # load graph
         self.graph = Graph(**graph_args)
-        A = torch.tensor(self.graph.A, dtype=torch.float32, requires_grad=False)
+        A          = torch.tensor(self.graph.A, dtype = torch.float32, 
+                                    requires_grad = False)
+        
         self.register_buffer('A', A)
 
         # build networks
         spatial_kernel_size = A.size(0)
-
         kernel_size = (temporal_kernel_size, spatial_kernel_size)
 
         self.data_bn = nn.BatchNorm1d(in_channels * A.size(1))
 
         self.encoder = nn.ModuleList((
-            st_gcn(in_channels, 64, kernel_size, 1, **kwargs),
-            # st_gcn(64, 64, kernel_size, 1, **kwargs),
-            # st_gcn(64, 64, kernel_size, 1, **kwargs),
-            # st_gcn(64, 64, kernel_size, 1, **kwargs),
-            # st_gcn(64, 64, kernel_size, 1, **kwargs),
-            st_gcn(64, 128 , kernel_size, 1, **kwargs),
-            # st_gcn(32, 32, kernel_size, 1, **kwargs),
-            # st_gcn(32, 32, kernel_size, 1, **kwargs),
-            # st_gcn(32, 32, kernel_size, 1, **kwargs),
-            st_gcn(128, 128, kernel_size, 1, **kwargs)
+            st_gcn(in_channels  , 64    , kernel_size, 1, **kwargs),
+            st_gcn(64           , 128   , kernel_size, 1, **kwargs),
+            st_gcn(128          , 128   , kernel_size, 1, **kwargs)
             
         ))
 
@@ -142,18 +133,21 @@ class Encoder(nn.Module):
             self.edge_importance = [1] * len(self.encoder)
 
         # fcn for encoding
-        self.z_mean = nn.Conv2d(128, n_z, kernel_size=1)
-        
-        self.z_logvar = nn.Conv2d(128, n_z, kernel_size=1)
+        self.z_mean     = nn.Conv2d(128, num_class, kernel_size=1)
+        self.z_logvar   = nn.Conv2d(128, num_class, kernel_size=1)
 
     def forward(self, x):
-        
-        
         N, C, T, V, M = x.size()
         
-        x = x.permute(0, 4, 1, 2, 3).contiguous()
-
+        #Data Norm
+        x = x.permute(0, 4, 3, 1, 2).contiguous()
+        x = x.view(N * M, V * C, T)
+        x = self.data_bn(x)
+        
+        x = x.view(N, M, V, C, T)
+        x = x.permute(0, 1, 3, 4, 2).contiguous()
         x = x.view(N * M, C, T, V)
+
         
         # forward
         for gcn, importance in zip(self.encoder, self.edge_importance):
@@ -162,16 +156,16 @@ class Encoder(nn.Module):
         # global pooling
         x = F.avg_pool2d(x, x.size()[2:])
         
-        logvar = x.view(N*M, -1, 1,1)
-
-        mean = x.view(N, M, -1, 1 ,1).mean(dim = 1)
-    
-        mean = mean.view(N,-1 ,1 ,1)
-
         # prediction
+        mean = x.view(N, M, -1, 1 ,1).mean(dim = 1)
+        mean = mean.view(N,-1 ,1 ,1)
+        
         mean = self.z_mean(mean)
         mean = mean.view(mean.size(0), -1)
 
+        #latent value
+        logvar = x.view(N*M, -1, 1,1)
+        
         logvar = self.z_logvar(logvar)
         logvar = logvar.view(logvar.size(0), -1)
 
@@ -198,32 +192,31 @@ class Decoder(nn.Module):
             :math:`M_{in}` is the number of instance in a frame.
     """
 
-    def __init__(self, in_channels, n_z,T,V,M, graph_args,
-                 edge_importance_weighting=False, temporal_kernel_size=9, **kwargs):
+    def __init__(self, in_channels, num_class, T, V, 
+                    graph_args, edge_importance_weighting = False, 
+                    temporal_kernel_size = 9, **kwargs):
+        
         super().__init__()
 
         # load graph
-        self.graph = Graph(**graph_args)
-        A = torch.tensor(self.graph.A, dtype=torch.float32, requires_grad=False)
+        self.graph  = Graph(**graph_args)
+        A           = torch.tensor(self.graph.A, dtype = torch.float32, 
+                                    requires_grad = False)
+        
         self.register_buffer('A', A)
 
-        # build networks
-        
+        # build networks      
         spatial_kernel_size = A.size(0)
-        kernel_size = (temporal_kernel_size, spatial_kernel_size)
+        kernel_size         = (temporal_kernel_size, spatial_kernel_size)
 
 
-        self.fcn = nn.ConvTranspose2d(n_z, 128, kernel_size=(T,V))
-        
+        self.fcn    = nn.ConvTranspose2d(num_class, 128, kernel_size=(T,V))        
         self.fcn_bn = nn.BatchNorm1d(128 * A.size(1))
 
         self.decoder = nn.ModuleList((
-            
-            st_gctn(128, 128, kernel_size, 1, **kwargs),
-            
-            st_gctn(128, 64, kernel_size, 1, **kwargs),
-            
-            st_gctn(64, in_channels, kernel_size, 1, ** kwargs)
+            st_gctn(128 , 128        , kernel_size, 1, **kwargs),
+            st_gctn(128 , 64         , kernel_size, 1, **kwargs),
+            st_gctn(64  , in_channels, kernel_size, 1, ** kwargs)
         ))
 
         # initialize parameters for edge importance weighting
@@ -235,50 +228,40 @@ class Decoder(nn.Module):
         else:
             self.edge_importance = [1] * len(self.decoder)
 
+        #ouput Norm
         self.data_bn = nn.BatchNorm1d(in_channels * A.size(1))
-
-        self.out = nn.Tanh()
+        self.out     = nn.Tanh()
         
     def forward(self, z):
 
         N,M,_ = z.size()
-        
-        
-        # reshape
-        
 
+        z = z.view( N * M, -1, 1, 1 )
         
-
-        z = z.view(N*M,-1,1,1)
-        
-        # z = z.repeat([1, 1, T, V])
-        # forward
+        # Deconvo spatial temporal
         z = self.fcn(z)
         
         _,C,T, V = z.size()
 
-        z = z.permute(0,3,1,2).contiguous()
-        
+        # z norm
+        z = z.permute( 0, 3, 1, 2 ).contiguous() 
         z = z.view(N * M, V * C, T)
         
-        z = self.fcn_bn(z)
+        z = self.fcn_bn(z) 
 
         z = z.view(N, M, V, C, T)
         z = z.permute(0, 1, 3, 4, 2).contiguous()
         z = z.view(N * M, C, T, V)
 
-        # forward
+        # Deconvolution forward
         for gcn, importance in zip(self.decoder, self.edge_importance):
             z, _ = gcn(z, self.A * importance)
 
-        # z = torch.unsqueeze(z, 4)
-
-        # data normalization
-        
+        # data normalization        
         _, C, T, V,  = z.size()
         
-        z = z.view(N,M,C,T,V).contiguous()
-        
+        # output norm
+        z = z.view(N, M, C, T, V ).contiguous()
         z = z.permute(0, 1, 4, 2, 3).contiguous()
 
         z = z.view(N * M, V * C, T)
@@ -296,14 +279,24 @@ if __name__ == '__main__':
     x=torch.randn(36,3,300,25,2).cuda()
     
     N, C, T, V, M = x.size()
-    graph_args = {"layout":'ntu-rgb+d','strategy': "uniform", 'max_hop': 1, 'dilation': 1}
-    m = CVAE(in_channels=3, T=T, V=V, n_z=32, graph_args= graph_args,edge_importance_weighting=True).cuda()
-    optimizer = torch.optim.SGD(m.parameters(), lr=0.01, momentum=0.9)
-    lossF = nn.MSELoss()
+
+    graph_args = {"layout":'ntu-rgb+d','strategy': "uniform"}
+    
+    m = CVAE(in_channels = 3, T = T, V = V, n_z = 32, 
+                graph_args = graph_args,
+                edge_importance_weighting = True 
+                ).cuda()
+    
+    optimizer   = torch.optim.SGD(m.parameters(), lr=0.01, momentum=0.9)
+    lossF       = nn.MSELoss()
     
     for i in range(10000):
-        recon_x, mean, lsig, z = m (x)
-        loss = lossF(x,recon_x) 
+
+        recon_x, mean, lsig, z = m(x)
+        
+        optimizer.zero_grad()
+        loss = lossF(x, recon_x) 
+        
         optimizer.step()
         if (i % 100)==0:
             print(i," : ", loss.item())
@@ -312,4 +305,5 @@ if __name__ == '__main__':
     print(mean.shape)
     print(lsig.shape)
     print(z.shape)
-    print(lossF(x,recon_x))
+    print(lossF(x, recon_x ))
+    
