@@ -15,13 +15,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torch.autograd import Variable
+from   torch.autograd import Variable
 
 # torchlight
 import torchlight
-from torchlight import str2bool
-from torchlight import DictAction
-from torchlight import import_class
+from   torchlight import str2bool
+from   torchlight import DictAction
+from   torchlight import import_class
 
 from .processor import Processor
 

@@ -59,37 +59,47 @@ class Processor(IO):
 
     def load_data(self):
         Feeder = import_class(self.arg.feeder)
+        
         if 'debug' not in self.arg.train_feeder_args:
             self.arg.train_feeder_args['debug'] = self.arg.debug
+        
         self.data_loader = dict()
+        
         if self.arg.phase == 'train':
             self.data_loader['train'] = torch.utils.data.DataLoader(
-                dataset=Feeder(**self.arg.train_feeder_args),
-                batch_size=self.arg.batch_size,
-                shuffle=True,
-                num_workers=self.arg.num_worker * torchlight.ngpu(
-                    self.arg.device),
-                drop_last=True)
+                dataset     = Feeder(**self.arg.train_feeder_args),
+                batch_size  = self.arg.batch_size,
+                shuffle     = True,
+                num_workers = self.arg.num_worker * torchlight.ngpu(self.arg.device),
+                drop_last   = True
+                )
+
         if self.arg.test_feeder_args:
             self.data_loader['test'] = torch.utils.data.DataLoader(
-                dataset=Feeder(**self.arg.test_feeder_args),
-                batch_size=self.arg.test_batch_size,
-                shuffle=False,
-                num_workers=self.arg.num_worker * torchlight.ngpu(
-                    self.arg.device))
+                dataset     = Feeder(**self.arg.test_feeder_args),
+                batch_size  = self.arg.test_batch_size,
+                shuffle     = False,
+                num_workers = self.arg.num_worker * torchlight.ngpu(self.arg.device)
+                )
 
     def show_epoch_info(self):
+        
         for k, v in self.epoch_info.items():
             self.io.print_log('\t{}: {}'.format(k, v))
-        if self.arg.pavi_log:
+        
+        if(self.arg.pavi_log):
             self.io.log('train', self.meta_info['iter'], self.epoch_info)
 
     def show_iter_info(self):
-        if self.meta_info['iter'] % self.arg.log_interval == 0:
+
+        if(self.meta_info['iter'] % self.arg.log_interval == 0):
             info ='\tIter {} Done.'.format(self.meta_info['iter'])
+            
             for k, v in self.iter_info.items():
-                if isinstance(v, float):
+                
+                if( isinstance(v, float)):
                     info = info + ' | {}: {:.4f}'.format(k, v)
+                
                 else:
                     info = info + ' | {}: {}'.format(k, v)
 
@@ -99,17 +109,21 @@ class Processor(IO):
                 self.io.log('train', self.meta_info['iter'], self.iter_info)
 
     def train(self):
+
         for _ in range(100):
             self.iter_info['loss'] = 0
             self.show_iter_info()
             self.meta_info['iter'] += 1
+        
         self.epoch_info['mean loss'] = 0
         self.show_epoch_info()
 
     def test(self):
+        
         for _ in range(100):
             self.iter_info['loss'] = 1
             self.show_iter_info()
+        
         self.epoch_info['mean loss'] = 1
         self.show_epoch_info()
 
@@ -117,7 +131,8 @@ class Processor(IO):
         self.io.print_log('Parameters:\n{}\n'.format(str(vars(self.arg))))
 
         # training phase
-        if self.arg.phase == 'train':
+        if(self.arg.phase == 'train'):
+            
             for epoch in range(self.arg.start_epoch, self.arg.num_epoch):
                 self.meta_info['epoch'] = epoch
 
@@ -130,9 +145,9 @@ class Processor(IO):
                 if ((epoch + 1) % self.arg.save_interval == 0) or (
                         epoch + 1 == self.arg.num_epoch):
                     date_time = datetime.datetime.now().strftime("%Y_%m_%d/")
-                    filename = date_time + 'epoch{}_model.pt'.format(epoch + 1)
+                    filename  = date_time + 'epoch{}_model.pt'.format(epoch + 1)
                     
-                    if not os.path.exists(self.io.work_dir + "/" +  date_time):
+                    if(not os.path.exists(self.io.work_dir + "/" +  date_time)):
                         os.makedirs(self.io.work_dir + "/" + date_time)
                     
                     self.io.save_model(self.model, filename)
@@ -144,11 +159,12 @@ class Processor(IO):
                     self.test()
                     self.io.print_log('Done.')
         # test phase
-        elif self.arg.phase == 'test':
+        elif(self.arg.phase == 'test'):
 
             # the path of weights must be appointed
             if self.arg.weights is None:
                 raise ValueError('Please appoint --weights.')
+            
             self.io.print_log('Model:   {}.'.format(self.arg.model))
             self.io.print_log('Weights: {}.'.format(self.arg.weights))
 
@@ -158,10 +174,11 @@ class Processor(IO):
             self.io.print_log('Done.\n')
 
             # save the output of model
-            if self.arg.save_result:
+            if(self.arg.save_result):
                 result_dict = dict(
                     zip(self.data_loader['test'].dataset.sample_name,
                         self.result))
+                        
                 self.io.save_pkl(result_dict, 'test_result.pkl')
 
     @staticmethod
@@ -171,40 +188,42 @@ class Processor(IO):
         # parameter priority: command line > config > default
         parser = argparse.ArgumentParser( add_help=add_help, description='Base Processor')
 
-        parser.add_argument('-w', '--work_dir', default='./work_dir/tmp', help='the work folder for storing results')
-        parser.add_argument('-c', '--config', default=None, help='path to the configuration file')
+        parser.add_argument('-w', '--work_dir', default= './work_dir/tmp', help= 'the work folder for storing results')
+        parser.add_argument('-c', '--config'  , default= None            , help= 'path to the configuration file')
 
         # processor
-        parser.add_argument('--phase', default='train', help='must be train or test')
-        parser.add_argument('--save_result', type=str2bool, default=False, help='if ture, the output of the model will be stored')
-        parser.add_argument('--start_epoch', type=int, default=0, help='start training from which epoch')
-        parser.add_argument('--num_epoch', type=int, default=80, help='stop training in which epoch')
-        parser.add_argument('--use_gpu', type=str2bool, default=True, help='use GPUs or not')
-        parser.add_argument('--device', type=int, default=0, nargs='+', help='the indexes of GPUs for training or testing')
+        parser.add_argument('--phase'                      , default= 'train', help= 'must be train or test')
+        parser.add_argument('--save_result', type= str2bool, default= False  , help= 'if ture, the output of the model will be stored')
+        parser.add_argument('--start_epoch', type= int     , default= 0      , help= 'start training from which epoch')
+        parser.add_argument('--num_epoch'  , type= int     , default= 80     , help= 'stop training in which epoch')
+        parser.add_argument('--use_gpu'    , type= str2bool, default= True   , help= 'use GPUs or not')
+        parser.add_argument('--device'     , type= int     , default= 0, nargs='+', help= 'the indexes of GPUs for training or testing')
 
         # visulize and debug
-        parser.add_argument('--seed', type=int, default=None, help='the seed for random generator')
-        parser.add_argument('--log_interval', type=int, default=100, help='the interval for printing messages (#iteration)')
-        parser.add_argument('--save_interval', type=int, default=10, help='the interval for storing models (#iteration)')
-        parser.add_argument('--eval_interval', type=int, default=5, help='the interval for evaluating models (#iteration)')
-        parser.add_argument('--save_log', type=str2bool, default=True, help='save logging or not')
-        parser.add_argument('--print_log', type=str2bool, default=True, help='print logging or not')
-        parser.add_argument('--pavi_log', type=str2bool, default=False, help='logging on pavi or not')
+        parser.add_argument('--seed'         , type= int     , default= None , help= 'the seed for random generator')
+        parser.add_argument('--log_interval' , type= int     , default= 100  , help= 'the interval for printing messages (#iteration)')
+        parser.add_argument('--save_interval', type= int     , default= 10   , help= 'the interval for storing models (#iteration)')
+        parser.add_argument('--eval_interval', type= int     , default= 5    , help= 'the interval for evaluating models (#iteration)')
+        parser.add_argument('--save_log'     , type= str2bool, default= True , help= 'save logging or not')
+        parser.add_argument('--print_log'    , type= str2bool, default= True , help= 'print logging or not')
+        parser.add_argument('--pavi_log'     , type= str2bool, default= False, help= 'logging on pavi or not')
 
         # feeder
-        parser.add_argument('--feeder', default='feeder.feeder', help='data loader will be used')
-        parser.add_argument('--num_worker', type=int, default=4, help='the number of worker per gpu for data loader')
-        parser.add_argument('--train_feeder_args', action=DictAction, default=dict(), help='the arguments of data loader for training')
-        parser.add_argument('--test_feeder_args', action=DictAction, default=dict(), help='the arguments of data loader for test')
-        parser.add_argument('--batch_size', type=int, default=256, help='training batch size')
-        parser.add_argument('--test_batch_size', type=int, default=256, help='test batch size')
-        parser.add_argument('--debug', action="store_true", help='less data, faster loading')
+        parser.add_argument('--feeder'                      , default= 'feeder.feeder', help='data loader will be used')
+        parser.add_argument('--num_worker'       , type= int, default= 4              , help='the number of worker per gpu for data loader')
+        parser.add_argument('--train_feeder_args', action= DictAction, default= dict(), help='the arguments of data loader for training')
+        parser.add_argument('--test_feeder_args' , action= DictAction, default= dict(), help='the arguments of data loader for test')
+        parser.add_argument('--batch_size'       , type= int, default= 256            , help='training batch size')
+        parser.add_argument('--test_batch_size'  , type= int, default= 256            , help='test batch size')
+        
+        parser.add_argument('--debug', action= "store_true"     , help= 'less data, faster loading')
 
         # model
-        parser.add_argument('--model', default=None, help='the model will be used')
-        parser.add_argument('--model_args', action=DictAction, default=dict(), help='the arguments of model')
-        parser.add_argument('--weights', default=None, help='the weights for network initialization')
-        parser.add_argument('--ignore_weights', type=str, default=[], nargs='+', help='the name of weights which will be ignored in the initialization')
+        parser.add_argument('--model'     , default= None                      , help= 'the model will be used')
+        parser.add_argument('--model_args', action= DictAction, default= dict(), help= 'the arguments of model')
+        parser.add_argument('--weights'   , default= None                      , help= 'the weights for network initialization')
+        
+        parser.add_argument('--ignore_weights', type= str , default= [], nargs= '+', help= 'the name of weights which will be ignored in the initialization')
         #endregion yapf: enable
 
         return parser

@@ -1,15 +1,16 @@
 import sys
 sys.path.extend(['../'])
 
+import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from net.utils.graph import Graph
+from net.utils.graph   import Graph
 from net.subnet.st_gcn import *
 from net.subnet.discriminator import Discriminator
-import numpy as np
+
 
 class CVAE(nn.Module):
 
@@ -63,7 +64,6 @@ class CVAE(nn.Module):
         return mean + eps*std
 
     def inference(self, n=1, class_label = [0] ):
-
         
         batch_size = n
 
@@ -158,13 +158,12 @@ class Encoder(nn.Module):
         
         # prediction
         mean = x.view(N, M, -1, 1 ,1).mean(dim = 1)
-        mean = mean.view(N,-1 ,1 ,1)
         
         mean = self.z_mean(mean)
         mean = mean.view(mean.size(0), -1)
 
         #latent value
-        logvar = x.view(N*M, -1, 1,1)
+        logvar = x.view(N*M, -1, 1, 1)
         
         logvar = self.z_logvar(logvar)
         logvar = logvar.view(logvar.size(0), -1)
@@ -306,4 +305,3 @@ if __name__ == '__main__':
     print(lsig.shape)
     print(z.shape)
     print(lossF(x, recon_x ))
-    
