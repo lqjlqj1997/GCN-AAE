@@ -122,8 +122,8 @@ class Graph():
                                     i, self.center]:
                                 a_root[j, i]    = normalize_adjacency[j, i]
                             
-                            elif self.hop_dis[j, self.center] > 
-                                                self.hop_dis[i, self.center]:
+                            elif(self.hop_dis[j, self.center] > 
+                                                self.hop_dis[i, self.center]):
                                 
                                 a_close[j, i]   = normalize_adjacency[j, i]
                             
