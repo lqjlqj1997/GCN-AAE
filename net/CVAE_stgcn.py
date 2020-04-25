@@ -13,33 +13,43 @@ import numpy as np
 
 class CVAE(nn.Module):
 
-    def __init__(self, in_channels, T, V, num_class, graph_args,
+    def __init__(self, in_channels, T, V, M, num_class, graph_args,
                  edge_importance_weighting=False, **kwargs):
 
         super().__init__()
-
+        temporal_kernel_size= [299,299]
         self.T = T
         self.V = V
-        num_class = 120
+        self.M = M
+        # num_class = 120
         self.num_class = num_class
 
-        self.encoder = Encoder(in_channels, num_class, graph_args, edge_importance_weighting)
-        self.decoder = Decoder(in_channels, num_class,self.T,self.V, graph_args, edge_importance_weighting)
+        self.encoder = Encoder(in_channels, num_class, self.M,  graph_args, edge_importance_weighting,temporal_kernel_size[0])
+        # self.fcn = nn.Linear()
+        self.decoder = Decoder(in_channels, num_class,self.T,self.V,self.M, graph_args, edge_importance_weighting,temporal_kernel_size[1])
         self.y_discriminator   = Discriminator(num_class)
         self.z_discriminator   = Discriminator(num_class)
 
     def forward(self, x ):
         
-        self.batch_size = x.size(0)
-        self.M = x.size(4)
+        N,C,T,V,M = x.size()
+        
+        # mean, lsig
+        # for m in range(M): 
+            
+        #     body = x[:,:,:,:,m].view(N,C,T,V,1)
+
+            # mean, lsig = self.encoder(body)
+        
         mean, lsig = self.encoder(x)
+    
         mean = F.softmax(mean,dim=1)
 
-        z = self.reparameter(mean,lsig)
-        
+        z = self.reparameter(mean.repeat(M,1),lsig)
+        z = z.view(N,M,-1)
         
 
-        recon_x = self.decoder(z,self.M)
+        recon_x = self.decoder(z)
 
         return recon_x, mean, lsig, z
     
@@ -92,8 +102,8 @@ class Encoder(nn.Module):
             :math:`M_{in}` is the number of instance in a frame.
     """
 
-    def __init__(self, in_channels, n_z, graph_args,
-                 edge_importance_weighting=False, temporal_kernel_size=149, **kwargs):
+    def __init__(self, in_channels, n_z, M, graph_args,
+                 edge_importance_weighting=False, temporal_kernel_size=9, **kwargs):
         super().__init__()
 
         # load graph
@@ -109,12 +119,12 @@ class Encoder(nn.Module):
         self.data_bn = nn.BatchNorm1d(in_channels * A.size(1))
 
         self.encoder = nn.ModuleList((
-            st_gcn(in_channels, 256, kernel_size, 1, **kwargs),
+            st_gcn(in_channels, 64, kernel_size, 1, **kwargs),
             # st_gcn(64, 64, kernel_size, 1, **kwargs),
             # st_gcn(64, 64, kernel_size, 1, **kwargs),
             # st_gcn(64, 64, kernel_size, 1, **kwargs),
             # st_gcn(64, 64, kernel_size, 1, **kwargs),
-            st_gcn(256, 128 , kernel_size, 1, **kwargs),
+            st_gcn(64, 128 , kernel_size, 1, **kwargs),
             # st_gcn(32, 32, kernel_size, 1, **kwargs),
             # st_gcn(32, 32, kernel_size, 1, **kwargs),
             # st_gcn(32, 32, kernel_size, 1, **kwargs),
@@ -134,36 +144,38 @@ class Encoder(nn.Module):
         # fcn for encoding
         self.z_mean = nn.Conv2d(128, n_z, kernel_size=1)
         
-        self.z_lsig = nn.Conv2d(128, n_z, kernel_size=1)
+        self.z_logvar = nn.Conv2d(128, n_z, kernel_size=1)
 
     def forward(self, x):
-        # data normalization
-        N, C, T, V, M = x.size()
-
-        x = x.permute(0, 4, 3, 1, 2).contiguous()
-        x = x.view(N * M, V * C, T)
-        x = self.data_bn(x)
         
-        x = x.view(N, M, V, C, T)
-        x = x.permute(0, 1, 3, 4, 2).contiguous()
-        x = x.view(N * M, C, T, V)
+        
+        N, C, T, V, M = x.size()
+        
+        x = x.permute(0, 4, 1, 2, 3).contiguous()
 
+        x = x.view(N * M, C, T, V)
+        
         # forward
         for gcn, importance in zip(self.encoder, self.edge_importance):
             x, _ = gcn(x, self.A * importance)
 
         # global pooling
         x = F.avg_pool2d(x, x.size()[2:])
+        
+        logvar = x.view(N*M, -1, 1,1)
 
-        x = x.view(N, M, -1, 1, 1).mean(dim=1)
+        mean = x.view(N, M, -1, 1 ,1).mean(dim = 1)
+    
+        mean = mean.view(N,-1 ,1 ,1)
 
         # prediction
-        mean = self.z_mean(x)
+        mean = self.z_mean(mean)
         mean = mean.view(mean.size(0), -1)
-        lsig = self.z_lsig(x)
-        lsig = lsig.view(lsig.size(0), -1)
 
-        return mean, lsig
+        logvar = self.z_logvar(logvar)
+        logvar = logvar.view(logvar.size(0), -1)
+
+        return mean, logvar
 
 
 class Decoder(nn.Module):
@@ -186,8 +198,8 @@ class Decoder(nn.Module):
             :math:`M_{in}` is the number of instance in a frame.
     """
 
-    def __init__(self, in_channels, n_z,T,V, graph_args,
-                 edge_importance_weighting=False, temporal_kernel_size=149, **kwargs):
+    def __init__(self, in_channels, n_z,T,V,M, graph_args,
+                 edge_importance_weighting=False, temporal_kernel_size=9, **kwargs):
         super().__init__()
 
         # load graph
@@ -202,19 +214,16 @@ class Decoder(nn.Module):
 
 
         self.fcn = nn.ConvTranspose2d(n_z, 128, kernel_size=(T,V))
+        
+        self.fcn_bn = nn.BatchNorm1d(128 * A.size(1))
 
         self.decoder = nn.ModuleList((
             
             st_gctn(128, 128, kernel_size, 1, **kwargs),
-            # st_gctn(32, 32, kernel_size, 1, **kwargs),
-            # st_gctn(32, 32, kernel_size, 1, **kwargs),
-            # st_gctn(32, 32, kernel_size, 1, **kwargs),
-            st_gctn(128, 256, kernel_size, 1, **kwargs),
-            # st_gctn(64, 64, kernel_size, 1, **kwargs),
-            # st_gctn(64, 64, kernel_size, 1, **kwargs),
-            # st_gctn(64, 64, kernel_size, 1, **kwargs),
-            # st_gctn(64, 64, kernel_size, 1, **kwargs),
-            st_gctn(256, in_channels, kernel_size, 1, ** kwargs)
+            
+            st_gctn(128, 64, kernel_size, 1, **kwargs),
+            
+            st_gctn(64, in_channels, kernel_size, 1, ** kwargs)
         ))
 
         # initialize parameters for edge importance weighting
@@ -227,19 +236,36 @@ class Decoder(nn.Module):
             self.edge_importance = [1] * len(self.decoder)
 
         self.data_bn = nn.BatchNorm1d(in_channels * A.size(1))
-        self.out = nn.Sigmoid()
+
+        self.out = nn.Tanh()
         
-    def forward(self, z, M):
+    def forward(self, z):
 
-        N = z.size()[0]
-
-        z = z.repeat([M,1])
+        N,M,_ = z.size()
+        
+        
         # reshape
-        z = z.view(z.size(0), z.size(1), 1, 1)
+        
+
+        
+
+        z = z.view(N*M,-1,1,1)
         
         # z = z.repeat([1, 1, T, V])
         # forward
         z = self.fcn(z)
+        
+        _,C,T, V = z.size()
+
+        z = z.permute(0,3,1,2).contiguous()
+        
+        z = z.view(N * M, V * C, T)
+        
+        z = self.fcn_bn(z)
+
+        z = z.view(N, M, V, C, T)
+        z = z.permute(0, 1, 3, 4, 2).contiguous()
+        z = z.view(N * M, C, T, V)
 
         # forward
         for gcn, importance in zip(self.decoder, self.edge_importance):
