@@ -2,42 +2,56 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.common import *
-from subnet.st_gcn
+from net.subnet.discriminator import Discriminator
+from net.subnet.stlstm import STLSTM
 
 class CVAE(nn.Module):
 
-    def __init__(self, in_channels, T, n_z, num_classes):
+    def __init__(self, in_channels, T, n_z, num_class):
 
         super().__init__()
 
-        self.T = T
+        self.T   = T
         self.n_z = n_z
-        self.encoder = Encoder(T, in_channels+num_classes, n_z)
-        self.decoder = Decoder(T, in_channels, n_z+num_classes)
-        # self.encoder = Encoder(in_channels, n_z, graph_args, edge_importance_weighting)
-        # self.decoder = Decoder(in_channels, n_z, graph_args, edge_importance_weighting)
+        self.num_class = num_class
+        
+        self.encoder = Encoder(T, in_channels, num_class)
+        self.decoder = Decoder(T, in_channels, num_class)
 
-    def forward(self, x, lenc, ldec):
+        self.y_discriminator   = Discriminator(num_class)
+        self.z_discriminator   = Discriminator(num_class)
 
-        batch_size = x.size(0)
+    def forward(self, x):
 
-        mean, lsig = self.encoder(x, lenc)
+        N, M, T, VC  = x.size()
 
-        sig = torch.exp(0.5 * lsig)
-        eps = to_var(torch.randn([batch_size, self.n_z]))
-        z = eps * sig + mean
+        mean, logvar = self.encoder(x)
+        mean = F.softmax(mean, dim=1 )  
 
-        recon_x = self.decoder(z, ldec, self.T)
+        z = self.reparameter(mean.repeat(M, 1), logvar )
+        z = z.view(N, M, -1)
 
-        return recon_x, mean, lsig, z
+        recon_x = self.decoder(z, T)
 
-    def inference(self, n=1, ldec=None):
+        return recon_x, mean, logvar, z
 
+    def reparameter(self, mean, logvar):
+        std = torch.exp(0.5 * logvar)
+        
+        eps = torch.randn_like(logvar)
+
+        return mean + (eps * std)
+
+    def inference(self, n=1, class_label = [0] ):
+        
         batch_size = n
-        z = to_var(torch.randn([batch_size, self.n_z]))
 
-        recon_x = self.decoder(z, ldec, self.T)
+        z = torch.tensor(np.random.normal(0, 1, (batch_size, self.num_class )))
+        
+        if(self.is_cuda):
+            z = z.cuda()
+        
+        recon_x = self.decoder(z)
 
         return recon_x
 
@@ -66,20 +80,21 @@ class Encoder(nn.Module):
         super().__init__()
 
         self.data_bn = nn.BatchNorm1d(in_channels)
-        # self.lstm = nn.LSTM(in_channels, 64, 3)
-        self.lstm = nn.ModuleList((
-            nn.LSTM(in_channels, 64, 3),
-            nn.LSTM(64, 32, 3)
+
+        self.lstm    = nn.ModuleList((
+            nn.LSTM(in_channels, 258, 3),
+            nn.LSTM(258, 128, 3)
         ))
 
         # fcn for encoding
-        self.z_mean = nn.Conv2d(T*32, n_z, kernel_size=1)
-        self.z_lsig = nn.Conv2d(T*32, n_z, kernel_size=1)
+        self.z_mean   = nn.Conv2d(T*128, n_z, kernel_size=1)
+        self.z_logvar = nn.Conv2d(T*128, n_z, kernel_size=1)
 
-    def forward(self, x, l):
+    def forward(self, x):
+        
+        N,M,T,F = x.size()
 
-        # concat
-        x = torch.cat((x, l), dim=2)
+        x = x.view(N*M,T,F)
 
         # data normalization
         x = x.permute(0, 2, 1).contiguous()
@@ -89,16 +104,22 @@ class Encoder(nn.Module):
         # forward
         for layer in self.lstm:
             x, _ = layer(x)
-        # x = x[-1, :, :].view(x.shape[1], x.shape[2], 1, 1)
-        x = x.view(x.shape[1], x.shape[0]*x.shape[2], 1, 1)
+                
+        x = x.permute(1,0,2).contiguous()
 
         # prediction
-        mean = self.z_mean(x)
-        mean = mean.view(mean.size(0), -1)
-        lsig = self.z_lsig(x)
-        lsig = lsig.view(lsig.size(0), -1)
+        mean = x.view( N, M  , x.shape[1] * x.shape[2], 1, 1).mean(dim = 1)
 
-        return mean, lsig
+        mean = self.z_mean(mean)
+        mean = mean.view(mean.size(0), -1)
+        
+        
+        logvar = x.view( N * M , x.shape[1] * x.shape[2], 1, 1)
+
+        logvar = self.z_logvar(logvar)
+        logvar = logvar.view(logvar.size(0), -1)
+
+        return mean, logvar
 
 
 class Decoder(nn.Module):
@@ -125,46 +146,40 @@ class Decoder(nn.Module):
         super().__init__()
 
         # build networks
-        self.fcn = nn.ConvTranspose2d(n_z, T*32, kernel_size=1)
-
+        self.fcn = nn.Sequential(
+            nn.BatchNorm2d(n_z ),
+            nn.ConvTranspose2d(n_z, T * 128, kernel_size= 1),
+            nn.BatchNorm2d(T * 128)
+        )
         self.lstm = nn.ModuleList((
-            nn.LSTM(32, 64, 3),
-            nn.LSTM(64, in_channels, 3)
+            nn.LSTM(128, 258, 3),
+            nn.LSTM(258, in_channels, 3)
         ))
 
         self.data_bn = nn.BatchNorm1d(in_channels)
-        self.out = nn.Sigmoid()
+        self.out     = nn.Sigmoid()
 
-    def forward(self, z, l, T):
-
-        N = z.size()[0]
-        # concat
-        z = torch.cat((z, l), dim=1)
+    def forward(self, z,T):
+        
+        N, M, n_z = z.size()
 
         # reshape
-        z = z.view(N, z.size()[1], 1, 1)
+        z = z.view(N * M, n_z, 1, 1)
 
         # forward
         z = self.fcn(z)
-        # z = z.view(z.shape[0], z.shape[1], 1)
-        # z = z.repeat([1, 1, T]).permute(2, 0, 1).contiguous()
+    
         z = z.view(T, z.shape[0], int(z.shape[1]/T))
-        # x = z.permute(0, 4, 3, 1, 2).contiguous()
-        # x = x.view(N * M, V * C, T)
-        #
-        # x = self.data_bn(x)
-        # x = x.view(N, M, V, C, T)
-        # x = x.permute(0, 1, 3, 4, 2).contiguous()
-        # x = x.view(N * M, C, T, V)
-
+        
         # forward
         for layer in self.lstm:
             z, _ = layer(z)
 
-        # data normalization
+        # data batch normalization
         z = z.permute(1, 2, 0).contiguous()
         z = self.data_bn(z)
         z = z.permute(0, 2, 1).contiguous()
-        z = self.out(z)
+        
+        z = z.view(N, M, z.shape[1], z.shape[2])
 
         return z
