@@ -117,9 +117,9 @@ class Encoder(nn.Module):
         self.data_bn = nn.BatchNorm1d(in_channels * A.size(1))
 
         self.encoder = nn.ModuleList((
-            st_gcn(in_channels  , 64    , kernel_size, 1, **kwargs),
-            st_gcn(64           , 128   , kernel_size, 1, **kwargs),
-            st_gcn(128          , 128   , kernel_size, 1, **kwargs)
+            st_gcn(in_channels  , 128    , kernel_size, 1, **kwargs),
+            st_gcn(128          , 256   , kernel_size, 1, **kwargs),
+            st_gcn(256          , 256   , kernel_size, 1, **kwargs)
             
         ))
 
@@ -133,8 +133,8 @@ class Encoder(nn.Module):
             self.edge_importance = [1] * len(self.encoder)
 
         # fcn for encoding
-        self.z_mean     = nn.Conv2d(128, num_class, kernel_size=1)
-        self.z_logvar   = nn.Conv2d(128, num_class, kernel_size=1)
+        self.z_mean     = nn.Conv2d(256, num_class, kernel_size=1)
+        self.z_logvar   = nn.Conv2d(256, num_class, kernel_size=1)
 
     def forward(self, x):
         N, C, T, V, M = x.size()
@@ -209,13 +209,16 @@ class Decoder(nn.Module):
         kernel_size         = (temporal_kernel_size, spatial_kernel_size)
 
 
-        self.fcn    = nn.ConvTranspose2d(num_class, 128, kernel_size=(T,V))        
-        self.fcn_bn = nn.BatchNorm1d(128 * A.size(1))
+        self.fcn    = nn.Sequential( 
+            nn.BatchNorm2d(num_class),
+            nn.ConvTranspose2d(num_class, 256, kernel_size=(T,V))        ,
+            nn.BatchNorm2d(256)
+        )
 
         self.decoder = nn.ModuleList((
-            st_gctn(128 , 128        , kernel_size, 1, **kwargs),
-            st_gctn(128 , 64         , kernel_size, 1, **kwargs),
-            st_gctn(64  , in_channels, kernel_size, 1, ** kwargs)
+            st_gctn(256 , 256        , kernel_size, 1, **kwargs),
+            st_gctn(256 , 128         , kernel_size, 1, **kwargs),
+            st_gctn(128  , in_channels, kernel_size, 1, ** kwargs)
         ))
 
         # initialize parameters for edge importance weighting
@@ -242,15 +245,6 @@ class Decoder(nn.Module):
         
         _,C,T, V = z.size()
 
-        # z norm
-        z = z.permute( 0, 3, 1, 2 ).contiguous() 
-        z = z.view(N * M, V * C, T)
-        
-        z = self.fcn_bn(z) 
-
-        z = z.view(N, M, V, C, T)
-        z = z.permute(0, 1, 3, 4, 2).contiguous()
-        z = z.view(N * M, C, T, V)
 
         # Deconvolution forward
         for gcn, importance in zip(self.decoder, self.edge_importance):

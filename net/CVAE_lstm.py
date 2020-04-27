@@ -22,7 +22,9 @@ class CVAE(nn.Module):
 
     def forward(self, x):
 
-        N, M, T, VC  = x.size()
+        N, C, T, V, M  = x.size()
+        x = x.permute(0,4,2,3,1).contiguous()
+        x = x.view(N,M,T,V * C)
 
         mean, logvar = self.encoder(x)
         mean = F.softmax(mean, dim=1 )  
@@ -31,6 +33,9 @@ class CVAE(nn.Module):
         z = z.view(N, M, -1)
 
         recon_x = self.decoder(z, T)
+        
+        recon_x = recon_x.view(N,M,T,V,C)
+        recon_x = recon_x.permute(0,4,2,3,1).contiguous()
 
         return recon_x, mean, logvar, z
 

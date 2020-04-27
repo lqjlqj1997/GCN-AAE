@@ -57,7 +57,7 @@ class REC_Processor(Processor):
         args = {"reduction" : "mean"}
 
 
-        weight = torch.tensor([5, 2, 1, 2, 2],requires_grad=False).to(self.dev)
+        weight = torch.tensor([1, 1, 1, 1, 1],requires_grad=False).to(self.dev)
 
         N,C,T,V,M = x.size()
         
@@ -188,12 +188,7 @@ class REC_Processor(Processor):
             label = label.long().to(self.dev)
             
             N,C,T,V,M = data.size()
-            
-            for n in range(N):
-                for m in range(1,M):
-                    if(data[n,:,:,:,m].sum()==0):
-                        data[n,:,:,:,m] = data[n,:,:,:,m-1] 
-            
+                     
             # forward
             recon_data, cat_y, latent_z, z = self.model(data)
 
@@ -250,12 +245,9 @@ class REC_Processor(Processor):
             
             self.show_iter_info()
             self.meta_info['iter'] += 1
-
-        #accuracy for 
-        (values, indices) = mean.max(dim=1)
     
-        print(indices.view(-1).data.item())
-        print(label.view( -1 ).data.item())
+        print(indices.view(-1))
+        print(label.view( -1 ))
         print((label == indices).sum(),len(label) )
         
         np.save("/content/result/data{}.npy".format(self.meta_info["epoch"]),data.cpu().numpy())
@@ -289,8 +281,8 @@ class REC_Processor(Processor):
             # get loss
             if evaluation:
 
-                loss = self.loss( recon_data, data, label, cat_y, latent_z)
-                loss_value.append( loss.item() )
+                loss, cat_loss = self.loss( recon_data, data, label, cat_y, latent_z)
+                loss_value.append( loss.data.item() )
                 label_frag.append( label.data.cpu().numpy() )
 
         self.result = np.concatenate( result_frag )
