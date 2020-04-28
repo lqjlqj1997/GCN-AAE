@@ -9,6 +9,7 @@ import yaml
 import numpy as np
 import time
 import itertools
+import os
 
 # torch
 import torch
@@ -250,8 +251,11 @@ class REC_Processor(Processor):
         print(label.view( -1 ))
         print((label == indices).sum(),len(label) )
         
-        np.save("/content/result/data{}.npy".format(self.meta_info["epoch"]),data.cpu().numpy())
-        np.save("/content/result/recon{}.npy".format(self.meta_info["epoch"]),recon_data.detach().cpu().numpy())
+        if(not os.path.exists(self.io.work_dir + "/result")):
+            os.makedirs(self.io.work_dir + "/result/")
+
+        np.save(self.io.work_dir + "/result/data{}.npy".format(self.meta_info["epoch"]),data.cpu().numpy())
+        np.save(self.io.work_dir + "/result/recon{}.npy".format(self.meta_info["epoch"]),recon_data.detach().cpu().numpy())
         
         self.epoch_info['mean_loss']= np.mean(loss_value)
         self.show_epoch_info()
@@ -284,6 +288,12 @@ class REC_Processor(Processor):
                 loss, cat_loss = self.loss( recon_data, data, label, cat_y, latent_z)
                 loss_value.append( loss.data.item() )
                 label_frag.append( label.data.cpu().numpy() )
+
+        if(not os.path.exists(self.io.work_dir + "/result")):
+            os.makedirs(self.io.work_dir + "/result/")
+
+        np.save(self.io.work_dir + "/result/eval_data{}.npy".format(self.meta_info["epoch"]),data.cpu().numpy())
+        np.save(self.io.work_dir + "/result/eval_recon{}.npy".format(self.meta_info["epoch"]),recon_data.detach().cpu().numpy())
 
         self.result = np.concatenate( result_frag )
         

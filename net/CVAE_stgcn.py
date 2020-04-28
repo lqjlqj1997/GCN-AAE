@@ -47,7 +47,7 @@ class CVAE(nn.Module):
         cat_y = F.softmax( cat_y , dim=1 )
 
         # Reparameter
-        z = self.reparameter(cat_y.repeat(M, 1), latent_z)
+        self.reparameter(cat_y.view(N,-1,1).repeat(1,1,M).permute(0,2,1).contiguous().view(N*M,-1), latent_z)
         z = z.view(N, M, -1)
         
 
