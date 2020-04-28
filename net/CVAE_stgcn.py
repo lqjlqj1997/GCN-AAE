@@ -47,7 +47,7 @@ class CVAE(nn.Module):
         cat_y = F.softmax( cat_y , dim=1 )
 
         # Reparameter
-        self.reparameter(cat_y.view(N,-1,1).repeat(1,1,M).permute(0,2,1).contiguous().view(N*M,-1), latent_z)
+        z = self.reparameter(cat_y.view(N,-1,1).repeat(1,1,M).permute(0,2,1).contiguous().view(N*M,-1), latent_z)
         z = z.view(N, M, -1)
         
 
@@ -117,9 +117,9 @@ class Encoder(nn.Module):
         self.data_bn = nn.BatchNorm1d(in_channels * A.size(1))
 
         self.encoder = nn.ModuleList((
-            st_gcn(in_channels  , 128    , kernel_size, 1, **kwargs),
-            st_gcn(128          , 256   , kernel_size, 1, **kwargs),
-            st_gcn(256          , 256   , kernel_size, 1, **kwargs)
+            st_gcn(in_channels  , 64    , kernel_size, 1, **kwargs),
+            st_gcn(64          , 128   , kernel_size, 1, **kwargs),
+            st_gcn(128          , 128   , kernel_size, 1, **kwargs)
             
         ))
 
@@ -133,8 +133,8 @@ class Encoder(nn.Module):
             self.edge_importance = [1] * len(self.encoder)
 
         # fcn for encoding
-        self.z_mean     = nn.Conv2d(256, num_class, kernel_size=1)
-        self.z_logvar   = nn.Conv2d(256, num_class, kernel_size=1)
+        self.z_mean     = nn.Conv2d(128, num_class, kernel_size=1)
+        self.z_logvar   = nn.Conv2d(128, num_class, kernel_size=1)
 
     def forward(self, x):
         N, C, T, V, M = x.size()
@@ -211,14 +211,14 @@ class Decoder(nn.Module):
 
         self.fcn    = nn.Sequential( 
             nn.BatchNorm2d(num_class),
-            nn.ConvTranspose2d(num_class, 256, kernel_size=(T,V))        ,
-            nn.BatchNorm2d(256)
+            nn.ConvTranspose2d(num_class, 128, kernel_size=(T,V))        ,
+            nn.BatchNorm2d(128)
         )
 
         self.decoder = nn.ModuleList((
-            st_gctn(256 , 256        , kernel_size, 1, **kwargs),
-            st_gctn(256 , 128         , kernel_size, 1, **kwargs),
-            st_gctn(128  , in_channels, kernel_size, 1, ** kwargs)
+            st_gctn(128 , 128        , kernel_size, 1, **kwargs),
+            st_gctn(128 , 64         , kernel_size, 1, **kwargs),
+            st_gctn(64  , in_channels, kernel_size, 1, ** kwargs)
         ))
 
         # initialize parameters for edge importance weighting
