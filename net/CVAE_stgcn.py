@@ -18,7 +18,7 @@ class CVAE(nn.Module):
                  edge_importance_weighting=False, **kwargs):
 
         super().__init__()
-        temporal_kernel_size= [299,299]
+        temporal_kernel_size= [9,9]
         
         self.T = T
         self.V = V
