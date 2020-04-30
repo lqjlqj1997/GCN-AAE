@@ -17,6 +17,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from   torch.autograd import Variable
+from sklearn.metrics.cluster import homogeneity_score
 
 # torchlight
 import torchlight
@@ -51,13 +52,22 @@ class REC_Processor(Processor):
     """
         Processor for Skeleton-based Action Recgnition
     """
-
+    def get_homogeneity(self,cat_y,label):
+        #get matched
+        (values, indices) = cat_y.max(dim=1)
+        
+        pred_label = indices.view(-1).cpu().data.numpy()
+        true_label = label.view(-1).cpu().data.numpy()
+        
+        return homogeneity_score(true_label, pred_label)
+    
     def loss(self,recon_x, x,label, cat_y, logvar):
         
+        # args = { "size_average":False,"reduce": True, "reduction" : "sum"}
         args = {"reduction" : "mean"}
 
 
-        weight = torch.tensor([1, 1, 1, 1, 1],requires_grad=False).to(self.dev)
+        weight = torch.tensor([1, 1, 1, 0, 1],requires_grad=False).to(self.dev)
 
         N,C,T,V,M = x.size()
         
@@ -77,8 +87,8 @@ class REC_Processor(Processor):
         recon_loss += weight[2] * nn.functional.mse_loss(a1, a2, **args)
         
         #catogory loss(classify loss)
-        cat_loss = F.cross_entropy(cat_y, label, **args )
-        cat_loss = weight[3] * cat_loss
+        # cat_loss = F.cross_entropy(cat_y, label, **args )
+        # cat_loss = weight[3] * cat_loss
 
         # Discriminator loss
         valid   = Variable( torch.zeros( cat_y.shape[0] , 1 ).fill_(1.0), requires_grad=False ).float().to(self.dev)
@@ -88,11 +98,8 @@ class REC_Processor(Processor):
         d_loss += F.binary_cross_entropy(self.model.z_discriminator(logvar), valid,**args )
         
         d_loss = weight[4] * d_loss
-
         
-        # KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),1).mean()
-        
-        return (recon_loss + cat_loss + d_loss) / (weight.sum()) , cat_loss * weight[3]
+        return (recon_loss + d_loss) 
 
     def load_model(self):
         
@@ -180,20 +187,20 @@ class REC_Processor(Processor):
 
         loader = self.data_loader['train']
         loss_value = []
-        
+        # print(len(loader.dataset))
         for data, label in loader:
 
             # get data
             data  = data.float().to(self.dev)
             label = label.long().to(self.dev)
-            
+
             N,C,T,V,M = data.size()
                      
             # forward
             recon_data, cat_y, latent_z, z = self.model(data)
 
             # autoencoder loss
-            loss, cat_loss = self.loss(recon_data, data, label , cat_y, latent_z)
+            loss = self.loss(recon_data, data, label , cat_y, latent_z)
             
             # backward
             self.optimizer["autoencoder"].zero_grad()
@@ -203,8 +210,10 @@ class REC_Processor(Processor):
             # cat_y discriminator train
             valid = Variable(torch.zeros(label.shape[0], 1 ).fill_(1.0), requires_grad=False).float().to(self.dev)
             fake  = Variable(torch.zeros(label.shape[0], 1 ).fill_(0.0), requires_grad=False).float().to(self.dev)
-              
-            one_hot_label = F.one_hot(label, num_classes = self.model.num_class).float().to(self.dev)
+            
+            rand_label = torch.randint(0,self.model.num_class,(1,N)).view(-1)
+
+            one_hot_label = F.one_hot(rand_label, num_classes = self.model.num_class).float().to(self.dev)
 
             y_loss =  F.binary_cross_entropy(self.model.y_discriminator(one_hot_label.detach()) , valid )
             y_loss += F.binary_cross_entropy(self.model.y_discriminator(cat_y.detach())         , fake  )
@@ -233,8 +242,8 @@ class REC_Processor(Processor):
 
             # statistics
             self.iter_info['loss']      = loss.data.item()
-            self.iter_info['cat_loss']  = cat_loss.data.item()
-            self.iter_info['acc']       = "{} / {}".format( (label == indices).sum().data.item() , len(label) )
+            # self.iter_info['cat_loss']  = cat_loss.data.item()
+            self.iter_info['acc']       = self.get_homogeneity(cat_y,label)
             
             self.iter_info['y_loss']    = y_loss.data.item()
             self.iter_info['z_loss']    = z_loss.data.item()
@@ -274,19 +283,19 @@ class REC_Processor(Processor):
             # get data
             data  = data.float().to(self.dev)
             label = label.long().to(self.dev)
-            
+
             # evaluation
             with torch.no_grad():
                 recon_data, cat_y, latent_z, z = self.model(data)
             
-            result_frag.append(cat_y.data.cpu().numpy())
+            result_frag.append(cat_y)
             
             # get loss
             if evaluation:
 
-                loss, cat_loss = self.loss( recon_data, data, label, cat_y, latent_z)
+                loss = self.loss( recon_data, data, label, cat_y, latent_z)
                 loss_value.append( loss.data.item() )
-                label_frag.append( label.data.cpu().numpy() )
+                label_frag.append( label )
 
         if(not os.path.exists(self.io.work_dir + "/result")):
             os.makedirs(self.io.work_dir + "/result/")
@@ -294,19 +303,21 @@ class REC_Processor(Processor):
         np.save(self.io.work_dir + "/result/eval_data{}.npy".format(self.meta_info["epoch"]),data.cpu().numpy())
         np.save(self.io.work_dir + "/result/eval_recon{}.npy".format(self.meta_info["epoch"]),recon_data.detach().cpu().numpy())
 
-        self.result = np.concatenate( result_frag )
+        self.result = torch.cat( result_frag )
         
+        print(self.result.size())
         if(evaluation):
             self.io.print_log("Evaluation {}:".format(self.meta_info["epoch"]))
             
-            self.label                   = np.concatenate( label_frag )
-            self.epoch_info['label']     = self.label
+            self.label                   = torch.cat(label_frag)
+            self.epoch_info['label']     = self.label.data.cpu().numpy()
             self.epoch_info['mean_loss'] = np.mean( loss_value )
+            self.epoch_info['acc'] = self.get_homogeneity(self.result,self.label)
             self.show_epoch_info()
 
             # show top-k accuracy
-            for k in self.arg.show_topk:
-                self.show_topk( k )
+            # for k in self.arg.show_topk:
+            #     self.show_topk( k )
 
     @staticmethod
     def get_parser(add_help = False ):

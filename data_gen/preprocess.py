@@ -19,7 +19,12 @@ def pre_normalization(data, zaxis=[0, 1], xaxis=[8, 4]):
         for i_p, person in enumerate(skeleton):
             
             if person.sum() == 0:
-                continue
+                
+                if i_p > 0 :
+                    skeleton[i_p] = skeleton[0]
+                
+                else:
+                    continue
             
             if person[0].sum() == 0:
                 index   =  (person.sum(-1).sum(-1) != 0)

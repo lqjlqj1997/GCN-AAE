@@ -7,7 +7,7 @@ test_feeder_args:
   label_path: ./data/NTU-RGB-D/xview/val_label.pkl
 
 # model
-model: net.st_gcn.Model
+model: net.ST_AAE.ST_AAE
 model_args:
   in_channels: 3
   num_class: 60

@@ -12,7 +12,7 @@ from net.subnet.st_gcn import *
 from net.subnet.discriminator import Discriminator
 
 
-class CVAE(nn.Module):
+class ST_AAE(nn.Module):
 
     def __init__(self, in_channels, T, V, num_class, graph_args,
                  edge_importance_weighting=False, **kwargs):

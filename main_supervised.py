@@ -10,9 +10,6 @@ def import_class(name):
     return mod
 
 if __name__ == "__main__":
-    
-
-    args = ['--config', "./config/ntu120-xsub/train.yaml"]
-    
+        
     processor = REC_Processor(sys.argv[1:])
     processor.start()

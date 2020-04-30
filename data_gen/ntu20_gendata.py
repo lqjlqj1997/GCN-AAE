@@ -21,6 +21,12 @@ training_subjects = set([
 # Even numbered setups (2,4,...,32) used for training
 training_setups = set(range(2, 33, 2))
 
+# Filter of the action class used
+
+test_class_set = set([1,14,41,42,43,44,45,46,47,48,49,52,81,82,91,103,104,105,112,117])
+
+dict_test_class = dict(zip(test_class_set,range(len(test_class_set))))
+
 max_body_true = 2
 max_body_kinect = 4
 num_joint = 25
@@ -111,9 +117,11 @@ def gendata(file_list, out_path, ignored_sample_path, benchmark, part):
             continue
 
         path = os.path.join(folder, filename)
+        
         setup_loc = filename.find('S')
         subject_loc = filename.find('P')
         action_loc = filename.find('A')
+
         setup_id = int(filename[(setup_loc+1):(setup_loc+4)])
         subject_id = int(filename[(subject_loc+1):(subject_loc+4)])
         action_class = int(filename[(action_loc+1):(action_loc+4)])
@@ -121,7 +129,9 @@ def gendata(file_list, out_path, ignored_sample_path, benchmark, part):
         if benchmark == 'xsub':
             istraining = (subject_id in training_subjects)
         elif benchmark == 'xset':
-            istraining = (setup_id in training_setups)
+            istraining = (setup_id   in training_setups)
+        elif benchmark == 'test':
+            istraining = (action_class in training_action)
         else:
             raise ValueError(f'Unsupported benchmark: {benchmark}')
 
@@ -134,7 +144,8 @@ def gendata(file_list, out_path, ignored_sample_path, benchmark, part):
 
         if issample:
             sample_paths.append(path)
-            sample_label.append(action_class - 1)   # to 0-indexed
+
+            sample_label.append( dict_test_class[action_class] )   # to 0-indexed
 
     # Save labels
     with open(f'{out_path}/{part}_label.pkl', 'wb') as f:
@@ -160,7 +171,7 @@ if __name__ == '__main__':
     parser.add_argument('--path', default='../data/nturgbd_raw/nturgb+d_skeletons120/')
     parser.add_argument('--ignored-sample-path',
                         default='../data/nturgbd_raw/NTU_RGBD120_samples_with_missing_skeletons.txt')
-    parser.add_argument('--out-folder', default='../data/ntu120/')
+    parser.add_argument('--out-folder', default='../data/ntu120/ntu60/')
 
     benchmark = ['xsub', 'xset']
     part = ['train', 'val']
@@ -168,9 +179,16 @@ if __name__ == '__main__':
 
     # Combine skeleton file paths
     file_list = []
+    
     for folder in [arg.path]:
         for path in os.listdir(folder):
-            file_list.append((folder, path))
+
+            action_loc   = path.find("A")
+            action_class = int(path[(action_loc+1):(action_loc+4)])
+
+            if action_class in test_class_set:  
+                file_list.append((folder, path))
+            
 
     for b in benchmark:
         for p in part:
@@ -178,4 +196,4 @@ if __name__ == '__main__':
             if not os.path.exists(out_path):
                 os.makedirs(out_path)
             gendata(file_list, out_path, arg.ignored_sample_path, benchmark=b, part=p)
-
+    
