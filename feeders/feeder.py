@@ -8,7 +8,7 @@ import numpy as np
 from torch.utils.data import Dataset
 
 from feeders import tools
-from utils import import_class
+from torchlight import import_class
 
 class Feeder(Dataset):
     def __init__(self, data_path, label_path, random_choose=False, 
