@@ -67,7 +67,7 @@ class REC_Processor(Processor):
         args = {"reduction" : "mean"}
 
 
-        weight = torch.tensor([1, 1, 1, 0, 1],requires_grad=False).to(self.dev)
+        weight = torch.tensor([1, 1, 1, 0.5],requires_grad=False).to(self.dev)
 
         N,C,T,V,M = x.size()
         
@@ -85,10 +85,6 @@ class REC_Processor(Processor):
         a2 = recon_x[:, :, 2:] - 2 * recon_x[:, :, 1:-1] + recon_x[:, :, :-2]
 
         recon_loss += weight[2] * nn.functional.mse_loss(a1, a2, **args)
-        
-        #catogory loss(classify loss)
-        # cat_loss = F.cross_entropy(cat_y, label, **args )
-        # cat_loss = weight[3] * cat_loss
 
         # Discriminator loss
         valid   = Variable( torch.zeros( cat_y.shape[0] , 1 ).fill_(1.0), requires_grad=False ).float().to(self.dev)
@@ -314,10 +310,6 @@ class REC_Processor(Processor):
             self.epoch_info['mean_loss'] = np.mean( loss_value )
             self.epoch_info['acc'] = self.get_homogeneity(self.result,self.label)
             self.show_epoch_info()
-
-            # show top-k accuracy
-            # for k in self.arg.show_topk:
-            #     self.show_topk( k )
 
     @staticmethod
     def get_parser(add_help = False ):
