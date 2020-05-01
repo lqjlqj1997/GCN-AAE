@@ -11,7 +11,7 @@ test_feeder_args:
   label_path: ./data/ntu120/ntu20/xsub/val_label.pkl
 
 # model
-model: net.CVAE_stgcn.CVAE
+model: net.ST_AAE.ST_AAE
 model_args:
   in_channels: 3
   T: 300
