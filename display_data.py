@@ -99,16 +99,14 @@ if __name__ == "__main__":
         recon_disp = True
     else:
         print("Invalid or No Path of reconstructed data is provided")
+    
+    if(data_disp or recon_disp):
+        for i in range(32):
+            print("====== data {} =======".format(i))
 
-    data = np.load("./data0.npy")
-    recon_data = np.load("./recon0.npy")
- 
-    for i in range(32):
-        print("====== data {} =======".format(i))
-        
-        if(data_disp):
-            display_skeleton(data[i]      ,"original_{}".format(i), save= arg.save)
-        
-        if(recon_disp):
-            display_skeleton(recon_data[i],"recon_{}".format(i), save= arg.save)
+            if(data_disp):
+                display_skeleton(data[i]      ,"original_{}".format(i), save= arg.save)
+
+            if(recon_disp):
+                display_skeleton(recon_data[i],"recon_{}".format(i), save= arg.save)
 
