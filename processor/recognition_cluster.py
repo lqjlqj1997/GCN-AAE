@@ -93,7 +93,7 @@ class REC_Processor(Processor):
         valid   = Variable( torch.zeros( logvar.shape[0] , 1 ).fill_(1.0), requires_grad=False ).float().to(self.dev)
         d_loss += F.binary_cross_entropy(self.model.z_discriminator(logvar), valid,**args )
         
-        d_loss = weight[4] * d_loss
+        d_loss = weight[3] * d_loss
         
         return (recon_loss + d_loss) 
 
