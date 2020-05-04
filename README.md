@@ -25,20 +25,38 @@
   ```
 ### Pre-Training model
   The weight of the model can be download from the Drive:
-  URL: 
+  URL: https://drive.google.com/drive/folders/1X8vj9tTy8rfos5M_id_LeLDtPWdQQ0ZR?usp=sharing
   
+  In the drive is the working diractory of the ST-AAE, which the layout will be /<dataset>/<Test Name>/.
+  <dataset> = xset_5      (The working directory of dataset NTU5 in cross setup) 
+            = xsub_5      (The working directory of dataset NTU5 in cross subject)
+            = xset_20     (The working directory of dataset NTU20 in cross setup)
+            = xsub_20     (The working directory of dataset NTU20 in cross subject)
+            = st-gcn_5    (The working directory of dataset NTU5 for ST-GCN)
+            = st-gcn_20   (The working directory of dataset NTU20 for ST-GCN)
+  <Test Name>  = Final                 (Supervised Learning of ST-AAE)
+               = Final_unsuperviser    (Unsupervised Learning of ST-AAE)
+               = others                (testing on different setting)
 ## ST-AAE
 ### Run Model 
   For run supervised learning model :
   ```
   python main_supervised.py   --config   "./config/<dataset config>/train.yaml" 
                               --work_dir <output working directory>
-                              --weights  <path to the Model weights file>
+                              --weights  <path of the model weights file which use to load the save weight of model>
   ```
+    
+  For run unsupervised learning model :
+  ```
+  python main_unsupervised.py   --config   "./config/<dataset config>/train.yaml" 
+                                --work_dir <output working directory>
+                                --weights  <path of the model weights file which use to load the save weight of model>
+  ```
+  
 ### Display The Skeleton Data
   Display the Skeleton data and Reconstructed skeleton data with commmand:
   ```
   python display_data.py  --data  <path of original data file>
                           --recon <path of the reconstructed data file>
-                          --save  <True for save all the figure per frame>
+                          --save  <True for save all the figure per frame, default = False>
   ```
