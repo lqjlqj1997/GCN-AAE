@@ -28,6 +28,7 @@
   URL: https://drive.google.com/drive/folders/1X8vj9tTy8rfos5M_id_LeLDtPWdQQ0ZR?usp=sharing
   
   In the drive is the working diractory of the ST-AAE, which the layout will be /<dataset>/<Test Name>/.
+  ```
   <dataset> = xset_5      (The working directory of dataset NTU5 in cross setup) 
             = xsub_5      (The working directory of dataset NTU5 in cross subject)
             = xset_20     (The working directory of dataset NTU20 in cross setup)
@@ -37,6 +38,7 @@
   <Test Name>  = Final                 (Supervised Learning of ST-AAE)
                = Final_unsuperviser    (Unsupervised Learning of ST-AAE)
                = others                (testing on different setting)
+    ```
 ## ST-AAE
 ### Run Model 
   For run supervised learning model :
