@@ -1,7 +1,7 @@
 weights: ./models/st_gcn.ntu-xview.pt
 
 # feeder
-feeder: feeder.feeder.Feeder
+feeder: feeders.feeder.Feeder
 test_feeder_args:
   data_path: ./data/NTU-RGB-D/xview/val_data.npy
   label_path: ./data/NTU-RGB-D/xview/val_label.pkl
@@ -10,7 +10,7 @@ test_feeder_args:
 model: net.ST_AAE.ST_AAE
 model_args:
   in_channels: 3
-  num_class: 60
+  num_class: 120
   dropout: 0.5
   edge_importance_weighting: True
   graph_args:

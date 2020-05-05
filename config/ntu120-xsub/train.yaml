@@ -4,11 +4,11 @@ seed: 02130511
 # feeder
 feeder: feeders.feeder.Feeder
 train_feeder_args:
-  data_path: ./data/ntu120/xsub/train_data_joint.npy
-  label_path: ./data/ntu120/xsub/train_label.pkl
+  data_path: ./data/ntu120/ntu20/xsub/train_data_joint.npy
+  label_path: ./data/ntu120/ntu20/xsub/train_label.pkl
 test_feeder_args:
-  data_path: ./data/ntu120/xsub/val_data_joint.npy
-  label_path: ./data/ntu120/xsub/val_label.pkl
+  data_path: ./data/ntu120/ntu20/xsub/val_data_joint.npy
+  label_path: ./data/ntu120/ntu20/xsub/val_label.pkl
 
 # model
 model: net.ST_AAE.ST_AAE
@@ -24,17 +24,16 @@ model_args:
     layout: 'ntu-rgb+d'
     strategy: 'spatial'
 
+
 #optim
-optimizer: "Adam"
-nesterov: "True"
 weight_decay: 0.0001
 base_lr: 0.1
-step: [40, 60,70]
+step: [10, 50]
 
 # training
 device: [0]
-batch_size: 32
-test_batch_size: 32
+batch_size: 64
+test_batch_size: 64
 num_epoch: 80
 
 

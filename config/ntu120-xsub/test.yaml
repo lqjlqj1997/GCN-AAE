@@ -10,7 +10,7 @@ test_feeder_args:
 model: net.ST_AAE.ST_AAE
 model_args:
   in_channels: 3
-  num_class: 60
+  num_class: 120
   dropout: 0.5
   edge_importance_weighting: True
   graph_args:

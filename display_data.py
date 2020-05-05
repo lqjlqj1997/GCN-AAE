@@ -58,6 +58,8 @@ def display_skeleton(data,sample_name,save=False):
             for i, (v1, v2) in enumerate(edge):
                 x1 = data[0, :2, t, v1, m]#.around(decimals=2)
                 x2 = data[0, :2, t, v2, m]
+                # print(data[0, 0, t, [v1, v2], m])
+                # print(data[0, 1, t, [v1, v2], m])
                 
                 if (x1.sum() != 0 and x2.sum() != 0) or v1 == 1 or v2 == 1 :
                     pose[m][i].set_xdata(data[0, 0, t, [v1, v2], m])
@@ -70,14 +72,14 @@ def display_skeleton(data,sample_name,save=False):
         
         
         if (save is True):
-            plt.savefig('./image/'+str(sample_name)+"/" + str(t) + '.jpg')
+            plt.savefig('./image/'+str(sample_name)+"/" + str(t) + '.png')
 
         plt.pause(1/240)
     plt.close(fig)
 
 if __name__ == "__main__":
     
-    parser = argparse.ArgumentParser( add_help=add_help, description='Display Skeleton')
+    parser = argparse.ArgumentParser( add_help=True, description='Display Skeleton')
 
     parser.add_argument('--data' ,default= ""    , help='path with the orignal data')
     parser.add_argument('--recon',default= ""    , help='path of reconstructed data')
@@ -95,18 +97,19 @@ if __name__ == "__main__":
         print("Invalid or No Path of data is provided")
 
     if(os.path.exists(arg.recon)) :
-        recon      = np.load(arg.recon)
+        recon_data = np.load(arg.recon)
         recon_disp = True
     else:
         print("Invalid or No Path of reconstructed data is provided")
     
+
     if(data_disp or recon_disp):
         for i in range(32):
             print("====== data {} =======".format(i))
-
+            
             if(data_disp):
                 display_skeleton(data[i]      ,"original_{}".format(i), save= arg.save)
-
+            
             if(recon_disp):
                 display_skeleton(recon_data[i],"recon_{}".format(i), save= arg.save)
 

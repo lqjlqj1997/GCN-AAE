@@ -1,6 +1,6 @@
 
 # feeder
-feeder: feeder.feeder.Feeder
+feeder: feeders.feeder.Feeder
 test_feeder_args:
   data_path: ./data/ntu120/ntu20/xsub/val_data_joint.npy
   label_path: ./data/ntu120/ntu20/xsub/val_label.pkl
