@@ -35,10 +35,13 @@
             = xsub_20     (The working directory of dataset NTU20 in cross subject)
             = st-gcn_5    (The working directory of dataset NTU5 for ST-GCN)
             = st-gcn_20   (The working directory of dataset NTU20 for ST-GCN)
+  ```
+  ```
   <Test Name>  = Final                 (Supervised Learning of ST-AAE)
                = Final_unsuperviser    (Unsupervised Learning of ST-AAE)
                = others                (testing on different setting)
-    ```
+  ```
+    
 ## ST-AAE
 ### Run Model 
   For run supervised learning model :
